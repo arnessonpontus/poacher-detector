@@ -41,7 +41,7 @@ IO::Decoders::Red565RandomAccessDecoder decoder;
 Processing::Downscaling::Center<W / w, H / h> strategy;
 Processing::Downscaling::Downscaler<W, H, w, h> downscaler(&decoder, &strategy);
 Processing::MotionDetector<w, h> motion;
-uint8_t* jpeg;
+
 unsigned long triggered_ms = 0;
 
 void capture();
@@ -59,7 +59,7 @@ void setup() {
 
     pinMode(4, OUTPUT); // Set led pin
 
-    camera.begin(FRAME_SIZE);
+    camera.begin(FRAME_SIZE, 30, 10000000);
     // set how much a pixel value should differ to be considered as a change
     motion.setDiffThreshold(DIFF_THRESHOLD);
     // set how many pixels (in percent) should change to be considered as motion
@@ -84,8 +84,12 @@ void loop() {
         // save();
         
         size_t len;
+        uint8_t* jpeg;
         fmt2jpg(frame->buf, W * H, W, H, PIXFORMAT, 30, &jpeg, &len);
         client.sendBinary((const char*) jpeg, len);
+
+        heap_caps_free(jpeg);
+        esp_camera_fb_return(frame);
     }
 
     if (current_ms - triggered_ms >= FLASH_LENGTH) {
