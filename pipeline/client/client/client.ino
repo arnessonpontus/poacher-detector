@@ -1,7 +1,9 @@
 #define CAMERA_MODEL_AI_THINKER
 
+#include <WiFi.h>
+#include <ArduinoWebsockets.h>
+
 #include <FS.h>
-#include <SPIFFS.h>
 #include <EloquentArduino.h>
 #include <eloquentarduino/io/serial_print.h>
 #include <eloquentarduino/vision/camera/ESP32Camera.h>
@@ -15,12 +17,21 @@
 #define h 24
 #define DIFF_THRESHOLD 15
 #define MOTION_THRESHOLD 0.15
+#define FLASH_LENGTH 500
 
 // delete the second definition if you want to turn on code benchmarking
 #define timeit(label, code) { uint32_t start = millis(); code; uint32_t duration = millis() - start; eloquent::io::print_all("It took ", duration, " millis for ", label); }
 #define timeit(label, code) code;
 
+const char *ssid = "PonePlus";
+const char *password = "Sutnop123";
+const char *websocket_server_host = "192.168.194.93";
+const uint16_t websocket_server_port = 8888;
+
+using namespace websockets;
 using namespace Eloquent::Vision;
+
+WebsocketsClient client;
 
 camera_fb_t *frame;
 Camera::ESP32Camera camera(PIXFORMAT);
@@ -30,20 +41,21 @@ IO::Decoders::Red565RandomAccessDecoder decoder;
 Processing::Downscaling::Center<W / w, H / h> strategy;
 Processing::Downscaling::Downscaler<W, H, w, h> downscaler(&decoder, &strategy);
 Processing::MotionDetector<w, h> motion;
-IO::Writers::JpegWriter<W, H> jpegWriter;
+uint8_t* jpeg;
+unsigned long triggered_ms = 0;
 
-void flash_led(unsigned long ms);
 void capture();
 void save();
 void stream_downscaled();
 void stream();
-
+void setup_connection();
 
 void setup() {
     Serial.begin(115200);
-    SPIFFS.begin(true);
     delay(1000);
     Serial.println("Begin");
+
+    setup_connection();
 
     pinMode(4, OUTPUT); // Set led pin
 
@@ -53,37 +65,59 @@ void setup() {
     // set how many pixels (in percent) should change to be considered as motion
     motion.setMotionThreshold(MOTION_THRESHOLD);
     // prevent consecutive triggers
-    motion.setDebounceFrames(5);
+    motion.setDebounceFrames(2);
 }
 
-
 void loop() {
+    unsigned long current_ms = millis();
+    
     capture();
     eloquent::io::print_all(motion.changes(), " pixels changed");
 
     if (motion.triggered()) {  
         Serial.println("Motion detected");
 
-        flash_led(500);
+        digitalWrite(4, HIGH);
+        triggered_ms = current_ms;
 
         // uncomment to save to disk
         // save();
+        
+        size_t len;
+        fmt2jpg(frame->buf, W * H, W, H, PIXFORMAT, 30, &jpeg, &len);
+        client.sendBinary((const char*) jpeg, len);
+    }
 
-        // uncomment to stream to the Python script for visualization
-        // stream();
-
-        // uncomment to stream downscaled imaged tp Python script
-        // stream_downscaled();
-
+    if (current_ms - triggered_ms >= FLASH_LENGTH) {
+      digitalWrite(4, LOW);
     }
 
     delay(30);
 }
 
-void flash_led(unsigned long ms) {
-    digitalWrite(4, HIGH); //Turn on led
-    delay(ms); // Wait ms
-    digitalWrite(4, LOW); //Turn off led
+void setup_connection()
+{
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+
+  Serial.print("Camera Ready! Use 'http://");
+  Serial.print(WiFi.localIP());
+  Serial.println("' to connect");
+
+  while (!client.connect(websocket_server_host, websocket_server_port, "/"))
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Websocket Connected!");
 }
 
 void capture() {
@@ -96,29 +130,6 @@ void capture() {
     timeit("motion detection", motion.detect(downscaled));
 }
 
-
 void save() {
-    File imageFile = SPIFFS.open("/capture.jpg", "wb");
-    uint8_t quality = 30;
-
-    eloquent::io::print_all("The image will be saved as /capture.jpg");
-    jpegWriter.write(imageFile, frame->buf, PIXFORMAT, quality);
-    imageFile.close();
-    eloquent::io::print_all("Saved");
-}
-
-
-void stream() {
-    eloquent::io::print_all("START OF FRAME");
-
-    jpegWriter.write(Serial, frame->buf, PIXFORMAT, 30);
-
-    eloquent::io::print_all("END OF FRAME");
-}
-
-
-void stream_downscaled() {
-    eloquent::io::print_all("START OF DOWNSCALED");
-    eloquent::io::print_array(downscaled, w * h);
-    eloquent::io::print_all("END OF DOWNSCALED");
+    // TODO: Save to SD card
 }
