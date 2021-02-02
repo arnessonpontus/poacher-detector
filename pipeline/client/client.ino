@@ -4,13 +4,12 @@
 
 #include <FS.h>
 #include "SD_MMC.h"
-#include <EEPROM.h>
 #include <EloquentArduino.h>
 #include <eloquentarduino/io/serial_print.h>
 #include <eloquentarduino/vision/camera/ESP32Camera.h>
 #include <eloquentarduino/vision/io/writers/JpegWriter.h>
+#include <Preferences.h>
 
-#define EEPROM_SIZE 8
 #define FRAME_SIZE FRAMESIZE_QVGA
 #define PIXFORMAT PIXFORMAT_RGB565
 #define W 320
@@ -50,8 +49,9 @@ IO::Decoders::Red565RandomAccessDecoder decoder;
 Processing::Downscaling::Center<W / w, H / h> strategy;
 Processing::Downscaling::Downscaler<W, H, w, h> downscaler(&decoder, &strategy);
 Processing::MotionDetector<w, h> motion;
-int pictureNumber = 0;
+unsigned int pictureNumber = 0;
 unsigned long triggered_ms = 0;
+Preferences preferences;
 
 void capture();
 void save();
@@ -64,6 +64,9 @@ void setup()
   Serial.begin(115200);
   delay(1000);
   Serial.println("Begin");
+
+  preferences.begin("poach_det", false);
+  pictureNumber = preferences.getUInt("camera_counter", 0);
 
   //setup_connection();
 
@@ -81,9 +84,6 @@ void setup()
     Serial.println("No SD Card attached");
     return;
   }
-
-  EEPROM.begin(EEPROM_SIZE);
-  pictureNumber = EEPROM.read(0);
 
   camera.begin(FRAME_SIZE, 30, 10000000);
   // set how much a pixel value should differ to be considered as a change
@@ -185,8 +185,7 @@ void save(uint8_t *jpeg, size_t len)
   {
     file.write(jpeg, len);
     Serial.printf("Saved file to path: %s\n", path.c_str());
-    EEPROM.write(0, ++pictureNumber);
-    EEPROM.commit();
+    preferences.putUInt("camera_counter", pictureNumber++);
   }
   file.close();
 }
