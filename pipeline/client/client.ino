@@ -1,6 +1,5 @@
 #define CAMERA_MODEL_AI_THINKER
 
-#include <WiFi.h>
 #include <ArduinoWebsockets.h>
 
 #include <FS.h>
@@ -21,6 +20,7 @@
 #define DIFF_THRESHOLD 15
 #define MOTION_THRESHOLD 0.15
 #define FLASH_LENGTH 500
+#define LED_PIN 33
 
 // delete the second definition if you want to turn on code benchmarking
 #define timeit(label, code)                                               \
@@ -65,11 +65,11 @@ void setup()
   delay(1000);
   Serial.println("Begin");
 
-  setup_connection();
+  //setup_connection();
 
-  pinMode(4, OUTPUT); // Set led pin
-
-  if (!SD_MMC.begin())
+  pinMode(LED_PIN, OUTPUT); // Set led pin
+  
+  if (!SD_MMC.begin("/sdcard", true))
   {
     Serial.println("SD Card Mount Failed");
     return;
@@ -97,7 +97,7 @@ void setup()
 void loop()
 {
   unsigned long current_ms = millis();
-
+  
   capture();
   eloquent::io::print_all(motion.changes(), " pixels changed");
 
@@ -105,7 +105,7 @@ void loop()
   {
     Serial.println("Motion detected");
 
-    digitalWrite(4, HIGH);
+    digitalWrite(LED_PIN, LOW);
     triggered_ms = current_ms;
 
     size_t len;
@@ -114,7 +114,7 @@ void loop()
 
     save(jpeg, len);
 
-    client.sendBinary((const char *)jpeg, len);
+    //client.sendBinary((const char *)jpeg, len);
 
     heap_caps_free(jpeg);
     esp_camera_fb_return(frame);
@@ -122,7 +122,7 @@ void loop()
 
   if (current_ms - triggered_ms >= FLASH_LENGTH)
   {
-    digitalWrite(4, LOW);
+    digitalWrite(LED_PIN, HIGH);
   }
 
   delay(30);
@@ -131,11 +131,18 @@ void loop()
 void setup_connection()
 {
   WiFi.begin(ssid, password);
-
+  
+  uint8_t connection_attempts = 0;
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
     Serial.print(".");
+
+    if (connection_attempts > 2) {
+      ESP.restart();
+    }
+    
+    connection_attempts++;
   }
 
   Serial.println("");
