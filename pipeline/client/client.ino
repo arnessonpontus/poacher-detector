@@ -10,14 +10,14 @@
 #include <eloquentarduino/vision/io/writers/JpegWriter.h>
 #include <Preferences.h>
 
-#define FRAME_SIZE FRAMESIZE_QVGA
+#define FRAME_SIZE FRAMESIZE_VGA
 #define PIXFORMAT PIXFORMAT_RGB565
-#define W 320
-#define H 240
-#define w 32
-#define h 24
+#define W 640
+#define H 480
+#define w 64
+#define h 48
 #define DIFF_THRESHOLD 15
-#define MOTION_THRESHOLD 0.15
+#define MOTION_THRESHOLD 0.05
 #define FLASH_LENGTH 500
 #define LED_PIN 33
 
@@ -29,7 +29,7 @@
     uint32_t duration = millis() - start;                                 \
     eloquent::io::print_all("It took ", duration, " millis for ", label); \
   }
-#define timeit(label, code) code;
+//#define timeit(label, code) code;
 
 const char *ssid = "PonePlus";
 const char *password = "Sutnop123";
@@ -68,7 +68,7 @@ void setup()
   preferences.begin("poach_det", false);
   pictureNumber = preferences.getUInt("camera_counter", 0);
 
-  //setup_connection();
+  setup_connection();
 
   pinMode(LED_PIN, OUTPUT); // Set led pin
   
@@ -110,11 +110,11 @@ void loop()
 
     size_t len;
     uint8_t *jpeg;
-    fmt2jpg(frame->buf, W * H, W, H, PIXFORMAT, 30, &jpeg, &len);
+    timeit("Jpeg conversion", fmt2jpg(frame->buf, W * H, W, H, PIXFORMAT, 30, &jpeg, &len));
 
-    save(jpeg, len);
+    timeit("Save to SD card", save(jpeg, len));
 
-    //client.sendBinary((const char *)jpeg, len);
+    client.sendBinary((const char *)jpeg, len);
 
     heap_caps_free(jpeg);
     esp_camera_fb_return(frame);
@@ -185,7 +185,7 @@ void save(uint8_t *jpeg, size_t len)
   {
     file.write(jpeg, len);
     Serial.printf("Saved file to path: %s\n", path.c_str());
-    preferences.putUInt("camera_counter", pictureNumber++);
+    preferences.putUInt("camera_counter", ++pictureNumber);
   }
   file.close();
 }
