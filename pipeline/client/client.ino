@@ -2,6 +2,7 @@
 
 #include <ArduinoWebsockets.h>
 
+#include <JPEGDEC.h>
 #include <FS.h>
 #include "SD_MMC.h"
 #include <EloquentArduino.h>
@@ -11,7 +12,7 @@
 #include <Preferences.h>
 
 #define FRAME_SIZE FRAMESIZE_VGA
-#define PIXFORMAT PIXFORMAT_RGB565
+#define PIXFORMAT PIXFORMAT_JPEG
 #define W 640
 #define H 480
 #define w 64
@@ -42,6 +43,8 @@ using namespace Eloquent::Vision;
 WebsocketsClient client;
 
 camera_fb_t *frame;
+uint8_t *rgb = (uint8_t*) heap_caps_malloc(sizeof(uint8_t) * 70000, MALLOC_CAP_8BIT);
+//uint8_t *rgb;
 Camera::ESP32Camera camera(PIXFORMAT);
 uint8_t downscaled[w * h];
 //IO::Decoders::GrayscaleRandomAccessDecoder decoder;
@@ -51,13 +54,16 @@ Processing::Downscaling::Downscaler<W, H, w, h> downscaler(&decoder, &strategy);
 Processing::MotionDetector<w, h> motion;
 unsigned int pictureNumber = 0;
 unsigned long triggered_ms = 0;
+unsigned long pixel_counter = 0;
 Preferences preferences;
+JPEGDEC jpeg;
 
 void capture();
 void save();
 void stream_downscaled();
 void stream();
 void setup_connection();
+int drawMCU(JPEGDRAW *pDraw);
 
 void setup()
 {
@@ -65,6 +71,11 @@ void setup()
   delay(1000);
   Serial.println("Begin");
 
+  if (rgb == NULL) {
+    Serial.println("Null ptr");
+    return;
+  }
+  
   preferences.begin("poach_det", false);
   pictureNumber = preferences.getUInt("camera_counter", 0);
 
@@ -97,28 +108,34 @@ void setup()
 void loop()
 {
   unsigned long current_ms = millis();
-  
-  capture();
-  eloquent::io::print_all(motion.changes(), " pixels changed");
 
-  if (motion.triggered())
+  timeit("Capture and convert", capture());
+  
+  //eloquent::io::print_all(motion.changes(), " pixels changed");
+
+  /*if (motion.triggered())
   {
     Serial.println("Motion detected");
 
     digitalWrite(LED_PIN, LOW);
     triggered_ms = current_ms;
 
-    size_t len;
-    uint8_t *jpeg;
-    timeit("Jpeg conversion", fmt2jpg(frame->buf, W * H, W, H, PIXFORMAT, 30, &jpeg, &len));
+    //size_t len;
+    //uint8_t *jpeg;
+    //timeit("Jpeg conversion", fmt2jpg(frame->buf, W * H, W, H, PIXFORMAT, 30, &jpeg, &len));
 
-    timeit("Save to SD card", save(jpeg, len));
+    //timeit("Save to SD card", save(jpeg, len));
 
-    client.sendBinary((const char *)jpeg, len);
+    //client.sendBinary((const char *)jpeg, len);
+  }*/
 
-    heap_caps_free(jpeg);
-    esp_camera_fb_return(frame);
-  }
+  Serial.println("YYAAAAAYYYYYY, DONE!");
+  pixel_counter = 0;
+  
+  //heap_caps_free(rgb);
+  esp_camera_fb_return(frame);
+  
+  Serial.println("After free");
 
   if (current_ms - triggered_ms >= FLASH_LENGTH)
   {
@@ -163,12 +180,24 @@ void setup_connection()
 void capture()
 {
   timeit("capture frame", frame = camera.capture());
+  
+  jpeg.openRAM((uint8_t*) frame->buf, frame->len, drawMCU);
+  jpeg.setPixelType(RGB565_LITTLE_ENDIAN);
+  jpeg.decode(0, 0, JPEG_SCALE_HALF);
+  jpeg.close();
+
+  //timeit("Jpeg to rgb888",fmt2rgb888(frame->buf, frame->len, PIXFORMAT, rgb));
+
+  //timeit("Save to SD card", save(jpeg, len));
+  //heap_caps_free(jpeg);
+
+  Serial.println("Captured");
 
   // scale image from size H * W to size h * w
-  timeit("downscale", downscaler.downscale(frame->buf, downscaled));
+  //timeit("downscale", downscaler.downscale(frame->buf, downscaled));
 
   // detect motion on the downscaled image
-  timeit("motion detection", motion.detect(downscaled));
+  //timeit("motion detection", motion.detect(downscaled));
 }
 
 void save(uint8_t *jpeg, size_t len)
@@ -188,4 +217,13 @@ void save(uint8_t *jpeg, size_t len)
     preferences.putUInt("camera_counter", ++pictureNumber);
   }
   file.close();
+}
+
+int drawMCU(JPEGDRAW *pDraw) {
+  for (int i = 0; i < pDraw->iWidth * pDraw->iHeight; i++) {
+
+    rgb[pixel_counter] = pDraw->pPixels[i];
+
+    pixel_counter++;
+  }
 }
