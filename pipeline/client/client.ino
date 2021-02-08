@@ -11,7 +11,7 @@
 #include <Preferences.h>
 
 #define FRAME_SIZE FRAMESIZE_VGA
-#define PIXFORMAT PIXFORMAT_JPEG
+#define PIXFORMAT PIXFORMAT_RGB565
 #define W 640
 #define H 480
 #define w 64
@@ -50,6 +50,7 @@ Processing::Downscaling::Center<W / w, H / h> strategy;
 Processing::Downscaling::Downscaler<W, H, w, h> downscaler(&decoder, &strategy);
 Processing::MotionDetector<w, h> motion;
 unsigned int pictureNumber = 0;
+unsigned int gray_number = 0;
 unsigned long triggered_ms = 0;
 Preferences preferences;
 
@@ -71,7 +72,7 @@ void setup()
   setup_connection();
 
   pinMode(LED_PIN, OUTPUT); // Set led pin
-  
+
   if (!SD_MMC.begin("/sdcard", true))
   {
     Serial.println("SD Card Mount Failed");
@@ -86,21 +87,23 @@ void setup()
   }
 
   camera.begin(FRAME_SIZE, 30, 10000000);
+  /*
   // set how much a pixel value should differ to be considered as a change
   motion.setDiffThreshold(DIFF_THRESHOLD);
   // set how many pixels (in percent) should change to be considered as motion
   motion.setMotionThreshold(MOTION_THRESHOLD);
   // prevent consecutive triggers
-  motion.setDebounceFrames(2);
+  motion.setDebounceFrames(2);*/
 }
 
 void loop()
 {
   unsigned long current_ms = millis();
-  
-  capture();
-  eloquent::io::print_all(motion.changes(), " pixels changed");
 
+  capture();
+  /*
+  eloquent::io::print_all(motion.changes(), " pixels changed");
+  
   if (motion.triggered())
   {
     Serial.println("Motion detected");
@@ -119,6 +122,7 @@ void loop()
   {
     digitalWrite(LED_PIN, HIGH);
   }
+  */
 
   delay(30);
 }
@@ -126,17 +130,18 @@ void loop()
 void setup_connection()
 {
   WiFi.begin(ssid, password);
-  
+
   uint8_t connection_attempts = 0;
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
     Serial.print(".");
 
-    if (connection_attempts > 2) {
+    if (connection_attempts > 2)
+    {
       ESP.restart();
     }
-    
+
     connection_attempts++;
   }
 
@@ -158,18 +163,46 @@ void setup_connection()
 void capture()
 {
   timeit("capture frame", frame = camera.capture());
-  
-  uint32_t ARRAY_LEGNTH = frame->width * frame->height * 3;
-  
-  uint8_t *rgb = (uint8_t*) heap_caps_malloc(ARRAY_LEGNTH, MALLOC_CAP_SPIRAM);
-  timeit("Jpeg to rgb conversion", fmt2rgb888(frame->buf, frame->len, PIXFORMAT, rgb));
+
+  uint32_t ARRAY_LENGTH = frame->width * frame->height;
+
+  uint8_t gray_image[ARRAY_LENGTH];
+  //timeit("Jpeg to rgb conversion", fmt2rgb888(frame->buf, frame->len, PIXFORMAT, rgb));
 
   // scale image from size H * W to size h * w
-  timeit("downscale", downscaler.downscale(rgb, downscaled));
+  //timeit("downscale", downscaler.downscale(rgb, downscaled));
 
   // detect motion on the downscaled image
-  timeit("motion detection", motion.detect(downscaled));
-  heap_caps_free(rgb);
+  //timeit("motion detection", motion.detect(downscaled));
+
+  fs::FS &fs = SD_MMC;
+  String path = "/esp/gray" + String(gray_number) + ".txt";
+  //String path = "/esp/gray_image.txt";
+
+  File file = fs.open(path.c_str(), FILE_WRITE);
+  if (!file)
+  {
+    Serial.println("Failed to open file in writing mode");
+  }
+  else
+  {
+    //file.println(gray_image);
+    //Serial.printf("Saved file to path: %s\n", path.c_str());
+  }
+
+  for (int i = 0; i < H; i++)
+  {
+    for (int j = 0; j < W; j++)
+    {
+      //gray_image[i * W + j] = decoder.get(frame->buf, W, H, j, i);
+      file.println(decoder.get(frame->buf, W, H, j, i));
+    }
+  }
+
+  file.close();
+
+  gray_number++;
+  //heap_caps_free(gray_image);
 }
 
 void save(uint8_t *jpeg, size_t len)
