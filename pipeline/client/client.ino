@@ -11,7 +11,7 @@
 #include <Preferences.h>
 
 #define FRAME_SIZE FRAMESIZE_VGA
-#define PIXFORMAT PIXFORMAT_RGB565
+#define PIXFORMAT PIXFORMAT_JPEG
 #define W 640
 #define H 480
 #define w 64
@@ -108,15 +108,10 @@ void loop()
     digitalWrite(LED_PIN, LOW);
     triggered_ms = current_ms;
 
-    size_t len;
-    uint8_t *jpeg;
-    timeit("Jpeg conversion", fmt2jpg(frame->buf, W * H, W, H, PIXFORMAT, 30, &jpeg, &len));
+    timeit("Save to SD card", save(frame->buf, frame->len));
 
-    timeit("Save to SD card", save(jpeg, len));
+    client.sendBinary((const char *) frame->buf, frame->len);
 
-    client.sendBinary((const char *)jpeg, len);
-
-    heap_caps_free(jpeg);
     esp_camera_fb_return(frame);
   }
 
@@ -163,12 +158,18 @@ void setup_connection()
 void capture()
 {
   timeit("capture frame", frame = camera.capture());
+  
+  uint32_t ARRAY_LEGNTH = frame->width * frame->height * 3;
+  
+  uint8_t *rgb = (uint8_t*) heap_caps_malloc(ARRAY_LEGNTH, MALLOC_CAP_SPIRAM);
+  timeit("Jpeg to rgb conversion", fmt2rgb888(frame->buf, frame->len, PIXFORMAT, rgb));
 
   // scale image from size H * W to size h * w
-  timeit("downscale", downscaler.downscale(frame->buf, downscaled));
+  timeit("downscale", downscaler.downscale(rgb, downscaled));
 
   // detect motion on the downscaled image
   timeit("motion detection", motion.detect(downscaled));
+  heap_caps_free(rgb);
 }
 
 void save(uint8_t *jpeg, size_t len)
