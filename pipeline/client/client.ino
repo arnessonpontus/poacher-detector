@@ -20,6 +20,8 @@
 #define MOTION_THRESHOLD 0.05
 #define FLASH_LENGTH 500
 #define LED_PIN 33
+#define ADOPTION_RATE 1.0
+#define THRESH 80
 
 // delete the second definition if you want to turn on code benchmarking
 #define timeit(label, code)                                               \
@@ -33,7 +35,7 @@
 
 const char *ssid = "PonePlus";
 const char *password = "Sutnop123";
-const char *websocket_server_host = "192.168.194.93";
+const char *websocket_server_host = "192.168.160.93";
 const uint16_t websocket_server_port = 8888;
 
 using namespace websockets;
@@ -53,6 +55,8 @@ unsigned int pictureNumber = 0;
 unsigned int gray_number = 0;
 unsigned long triggered_ms = 0;
 Preferences preferences;
+uint8_t *median;
+bool is_first_frame = true;
 
 void capture();
 void save();
@@ -65,6 +69,8 @@ void setup()
   Serial.begin(115200);
   delay(1000);
   Serial.println("Begin");
+
+  median = (uint8_t *)heap_caps_malloc(W * H, MALLOC_CAP_SPIRAM);
 
   preferences.begin("poach_det", false);
   pictureNumber = preferences.getUInt("camera_counter", 0);
@@ -87,43 +93,16 @@ void setup()
   }
 
   camera.begin(FRAME_SIZE, 30, 10000000);
-  /*
-  // set how much a pixel value should differ to be considered as a change
-  motion.setDiffThreshold(DIFF_THRESHOLD);
-  // set how many pixels (in percent) should change to be considered as motion
-  motion.setMotionThreshold(MOTION_THRESHOLD);
-  // prevent consecutive triggers
-  motion.setDebounceFrames(2);*/
 }
 
 void loop()
 {
   unsigned long current_ms = millis();
+  Serial.println(heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
   capture();
-  /*
-  eloquent::io::print_all(motion.changes(), " pixels changed");
-  
-  if (motion.triggered())
-  {
-    Serial.println("Motion detected");
 
-    digitalWrite(LED_PIN, LOW);
-    triggered_ms = current_ms;
-
-    timeit("Save to SD card", save(frame->buf, frame->len));
-
-    client.sendBinary((const char *) frame->buf, frame->len);
-
-    esp_camera_fb_return(frame);
-  }
-
-  if (current_ms - triggered_ms >= FLASH_LENGTH)
-  {
-    digitalWrite(LED_PIN, HIGH);
-  }
-  */
-
+  esp_camera_fb_return(frame);
   delay(30);
 }
 
@@ -164,45 +143,89 @@ void capture()
 {
   timeit("capture frame", frame = camera.capture());
 
+  // Remove first bad images
+  if (gray_number < 2)
+  {
+    gray_number++;
+    return;
+  }
+
   uint32_t ARRAY_LENGTH = frame->width * frame->height;
 
-  uint8_t gray_image[ARRAY_LENGTH];
-  //timeit("Jpeg to rgb conversion", fmt2rgb888(frame->buf, frame->len, PIXFORMAT, rgb));
-
-  // scale image from size H * W to size h * w
-  //timeit("downscale", downscaler.downscale(rgb, downscaled));
-
-  // detect motion on the downscaled image
-  //timeit("motion detection", motion.detect(downscaled));
-
-  fs::FS &fs = SD_MMC;
-  String path = "/esp/gray" + String(gray_number) + ".txt";
-  //String path = "/esp/gray_image.txt";
-
-  File file = fs.open(path.c_str(), FILE_WRITE);
-  if (!file)
-  {
-    Serial.println("Failed to open file in writing mode");
-  }
-  else
-  {
-    //file.println(gray_image);
-    //Serial.printf("Saved file to path: %s\n", path.c_str());
-  }
+  uint8_t *gray_image = (uint8_t *)heap_caps_malloc(ARRAY_LENGTH, MALLOC_CAP_SPIRAM);
+  char *bg_image_str = (char *)heap_caps_malloc(ARRAY_LENGTH + 1, MALLOC_CAP_SPIRAM);
 
   for (int i = 0; i < H; i++)
   {
     for (int j = 0; j < W; j++)
     {
-      //gray_image[i * W + j] = decoder.get(frame->buf, W, H, j, i);
-      file.println(decoder.get(frame->buf, W, H, j, i));
+      gray_image[i * W + j] = decoder.get(frame->buf, W, H, j, i);
     }
   }
 
-  file.close();
+  if (is_first_frame == true)
+  {
+    is_first_frame = false;
+
+    //memcpy(median, gray_image, ARRAY_LENGTH * sizeof(uint8_t));
+    heap_caps_free(gray_image);
+    heap_caps_free(bg_image_str);
+    return;
+  }
+
+  for (int i = 0; i < ARRAY_LENGTH; i++)
+  {
+    /*
+    if (gray_image[i] > median[i]) {
+      median[i] += ADOPTION_RATE;
+    } else {
+      median[i] -= ADOPTION_RATE;
+    }
+    
+
+    if (abs(gray_image[i] - median[i]) <= THRESH) {
+      gray_image[i] = 2;
+    } else {
+      gray_image[i] = 1;
+    }*/
+    gray_image[i] = 1;
+  }
+
+  if (gray_number > 3)
+  {
+    for (int i = 0; i < ARRAY_LENGTH; i++)
+    {
+      bg_image_str[i] = gray_image[i] + '0';
+    }
+
+    bg_image_str[ARRAY_LENGTH] = '\0';
+
+    fs::FS &fs = SD_MMC;
+    String path = "/esp/gray" + String(gray_number) + ".txt";
+
+    File file = fs.open(path.c_str(), FILE_WRITE);
+    if (!file)
+    {
+      Serial.println("Failed to open file in writing mode");
+    }
+
+    Serial.println("Writing to file " + path);
+
+    file.println(bg_image_str);
+
+    /*
+    for (int i = 0; i < ARRAY_LENGTH; i++) {
+      file.println(gray_image[i]);
+    }
+    */
+
+    file.close();
+  }
 
   gray_number++;
-  //heap_caps_free(gray_image);
+
+  heap_caps_free(gray_image);
+  heap_caps_free(bg_image_str);
 }
 
 void save(uint8_t *jpeg, size_t len)
