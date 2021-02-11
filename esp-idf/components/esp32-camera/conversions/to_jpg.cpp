@@ -23,9 +23,9 @@
 
 #include "esp_system.h"
 #if ESP_IDF_VERSION_MAJOR >= 4 // IDF 4+
-#if CONFIG_IDF_TARGET_ESP32 // ESP32/PICO-D4
+#if CONFIG_IDF_TARGET_ESP32    // ESP32/PICO-D4
 #include "esp32/spiram.h"
-#else 
+#else
 #error Target CONFIG_IDF_TARGET is not supported
 #endif
 #else // ESP32 Before IDF 4.0
@@ -37,49 +37,60 @@
 #define TAG ""
 #else
 #include "esp_log.h"
-static const char* TAG = "to_jpg";
+static const char *TAG = "to_jpg";
 #endif
 
 static void *_malloc(size_t size)
 {
-    void * res = malloc(size);
-    if(res) {
+    void *res = malloc(size);
+    if (res)
+    {
         return res;
     }
     return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 }
 
-static IRAM_ATTR void convert_line_format(uint8_t * src, pixformat_t format, uint8_t * dst, size_t width, size_t in_channels, size_t line)
+static IRAM_ATTR void convert_line_format(uint8_t *src, pixformat_t format, uint8_t *dst, size_t width, size_t in_channels, size_t line)
 {
-    int i=0, o=0, l=0;
-    if(format == PIXFORMAT_GRAYSCALE) {
+    int i = 0, o = 0, l = 0;
+    if (format == PIXFORMAT_GRAYSCALE)
+    {
         memcpy(dst, src + line * width, width);
-    } else if(format == PIXFORMAT_RGB888) {
+    }
+    else if (format == PIXFORMAT_RGB888)
+    {
         l = width * 3;
         src += l * line;
-        for(i=0; i<l; i+=3) {
-            dst[o++] = src[i+2];
-            dst[o++] = src[i+1];
+        for (i = 0; i < l; i += 3)
+        {
+            dst[o++] = src[i + 2];
+            dst[o++] = src[i + 1];
             dst[o++] = src[i];
         }
-    } else if(format == PIXFORMAT_RGB565) {
+    }
+    else if (format == PIXFORMAT_RGB565)
+    {
         l = width * 2;
         src += l * line;
-        for(i=0; i<l; i+=2) {
+        for (i = 0; i < l; i += 2)
+        {
             dst[o++] = src[i] & 0xF8;
-            dst[o++] = (src[i] & 0x07) << 5 | (src[i+1] & 0xE0) >> 3;
-            dst[o++] = (src[i+1] & 0x1F) << 3;
+            dst[o++] = (src[i] & 0x07) << 5 | (src[i + 1] & 0xE0) >> 3;
+            dst[o++] = (src[i + 1] & 0x1F) << 3;
         }
-    } else if(format == PIXFORMAT_YUV422) {
+    }
+    else if (format == PIXFORMAT_YUV422)
+    {
         uint8_t y0, y1, u, v;
         uint8_t r, g, b;
         l = width * 2;
         src += l * line;
-        for(i=0; i<l; i+=4) {
+        for (i = 0; i < l; i += 4)
+        {
             y0 = src[i];
-            u = src[i+1];
-            y1 = src[i+2];
-            v = src[i+3];
+            u = src[i + 1];
+            y1 = src[i + 2];
+            v = src[i + 3];
 
             yuv2rgb(y0, u, v, &r, &g, &b);
             dst[o++] = r;
@@ -99,14 +110,18 @@ bool convert_image(uint8_t *src, uint16_t width, uint16_t height, pixformat_t fo
     int num_channels = 3;
     jpge::subsampling_t subsampling = jpge::H2V2;
 
-    if(format == PIXFORMAT_GRAYSCALE) {
+    if (format == PIXFORMAT_GRAYSCALE)
+    {
         num_channels = 1;
         subsampling = jpge::Y_ONLY;
     }
 
-    if(!quality) {
+    if (!quality)
+    {
         quality = 1;
-    } else if(quality > 100) {
+    }
+    else if (quality > 100)
+    {
         quality = 100;
     }
 
@@ -116,20 +131,24 @@ bool convert_image(uint8_t *src, uint16_t width, uint16_t height, pixformat_t fo
 
     jpge::jpeg_encoder dst_image;
 
-    if (!dst_image.init(dst_stream, width, height, num_channels, comp_params)) {
+    if (!dst_image.init(dst_stream, width, height, num_channels, comp_params))
+    {
         ESP_LOGE(TAG, "JPG encoder init failed");
         return false;
     }
 
-    uint8_t* line = (uint8_t*)_malloc(width * num_channels);
-    if(!line) {
+    uint8_t *line = (uint8_t *)_malloc(width * num_channels);
+    if (!line)
+    {
         ESP_LOGE(TAG, "Scan line malloc failed");
         return false;
     }
 
-    for (int i = 0; i < height; i++) {
+    for (int i = 0; i < height; i++)
+    {
         convert_line_format(src, format, line, width, num_channels, i);
-        if (!dst_image.process_scanline(line)) {
+        if (!dst_image.process_scanline(line))
+        {
             ESP_LOGE(TAG, "JPG process line %u failed", i);
             free(line);
             return false;
@@ -137,7 +156,8 @@ bool convert_image(uint8_t *src, uint16_t width, uint16_t height, pixformat_t fo
     }
     free(line);
 
-    if (!dst_image.process_scanline(NULL)) {
+    if (!dst_image.process_scanline(NULL))
+    {
         ESP_LOGE(TAG, "JPG image finish failed");
         return false;
     }
@@ -145,16 +165,17 @@ bool convert_image(uint8_t *src, uint16_t width, uint16_t height, pixformat_t fo
     return true;
 }
 
-class callback_stream : public jpge::output_stream {
+class callback_stream : public jpge::output_stream
+{
 protected:
     jpg_out_cb ocb;
-    void * oarg;
+    void *oarg;
     size_t index;
 
 public:
-    callback_stream(jpg_out_cb cb, void * arg) : ocb(cb), oarg(arg), index(0) { }
-    virtual ~callback_stream() { }
-    virtual bool put_buf(const void* data, int len)
+    callback_stream(jpg_out_cb cb, void *arg) : ocb(cb), oarg(arg), index(0) {}
+    virtual ~callback_stream() {}
+    virtual bool put_buf(const void *data, int len)
     {
         index += ocb(oarg, index, data, len);
         return true;
@@ -165,40 +186,42 @@ public:
     }
 };
 
-bool fmt2jpg_cb(uint8_t *src, size_t src_len, uint16_t width, uint16_t height, pixformat_t format, uint8_t quality, jpg_out_cb cb, void * arg)
+bool fmt2jpg_cb(uint8_t *src, size_t src_len, uint16_t width, uint16_t height, pixformat_t format, uint8_t quality, jpg_out_cb cb, void *arg)
 {
     callback_stream dst_stream(cb, arg);
     return convert_image(src, width, height, format, quality, &dst_stream);
 }
 
-bool frame2jpg_cb(camera_fb_t * fb, uint8_t quality, jpg_out_cb cb, void * arg)
+bool frame2jpg_cb(camera_fb_t *fb, uint8_t quality, jpg_out_cb cb, void *arg)
 {
     return fmt2jpg_cb(fb->buf, fb->len, fb->width, fb->height, fb->format, quality, cb, arg);
 }
 
-
-
-class memory_stream : public jpge::output_stream {
+class memory_stream : public jpge::output_stream
+{
 protected:
     uint8_t *out_buf;
     size_t max_len, index;
 
 public:
-    memory_stream(void *pBuf, uint buf_size) : out_buf(static_cast<uint8_t*>(pBuf)), max_len(buf_size), index(0) { }
+    memory_stream(void *pBuf, uint buf_size) : out_buf(static_cast<uint8_t *>(pBuf)), max_len(buf_size), index(0) {}
 
-    virtual ~memory_stream() { }
+    virtual ~memory_stream() {}
 
-    virtual bool put_buf(const void* pBuf, int len)
+    virtual bool put_buf(const void *pBuf, int len)
     {
-        if (!pBuf) {
+        if (!pBuf)
+        {
             //end of image
             return true;
         }
-        if ((size_t)len > (max_len - index)) {
+        if ((size_t)len > (max_len - index))
+        {
             ESP_LOGW(TAG, "JPG output overflow: %d bytes", len - (max_len - index));
             len = max_len - index;
         }
-        if (len) {
+        if (len)
+        {
             memcpy(out_buf + index, pBuf, len);
             index += len;
         }
@@ -211,21 +234,22 @@ public:
     }
 };
 
-bool fmt2jpg(uint8_t *src, size_t src_len, uint16_t width, uint16_t height, pixformat_t format, uint8_t quality, uint8_t ** out, size_t * out_len)
+bool fmt2jpg(uint8_t *src, size_t src_len, uint16_t width, uint16_t height, pixformat_t format, uint8_t quality, uint8_t **out, size_t *out_len)
 {
     //todo: allocate proper buffer for holding JPEG data
     //this should be enough for CIF frame size
-    int jpg_buf_len = 64*1024;
+    int jpg_buf_len = 64 * 256;
 
-
-    uint8_t * jpg_buf = (uint8_t *)_malloc(jpg_buf_len);
-    if(jpg_buf == NULL) {
+    uint8_t *jpg_buf = (uint8_t *)_malloc(jpg_buf_len);
+    if (jpg_buf == NULL)
+    {
         ESP_LOGE(TAG, "JPG buffer malloc failed");
         return false;
     }
     memory_stream dst_stream(jpg_buf, jpg_buf_len);
 
-    if(!convert_image(src, width, height, format, quality, &dst_stream)) {
+    if (!convert_image(src, width, height, format, quality, &dst_stream))
+    {
         free(jpg_buf);
         return false;
     }
@@ -235,7 +259,7 @@ bool fmt2jpg(uint8_t *src, size_t src_len, uint16_t width, uint16_t height, pixf
     return true;
 }
 
-bool frame2jpg(camera_fb_t * fb, uint8_t quality, uint8_t ** out, size_t * out_len)
+bool frame2jpg(camera_fb_t *fb, uint8_t quality, uint8_t **out, size_t *out_len)
 {
     return fmt2jpg(fb->buf, fb->len, fb->width, fb->height, fb->format, quality, out, out_len);
 }

@@ -26,20 +26,96 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-// Globals, used for compatibility with Arduino-style sketches.
-namespace {
-tflite::ErrorReporter* error_reporter = nullptr;
-const tflite::Model* model = nullptr;
-tflite::MicroInterpreter* interpreter = nullptr;
-TfLiteTensor* input = nullptr;
+#include <stdio.h>
+#include "esp_wifi.h"
+#include "esp_system.h"
+#include "nvs_flash.h"
+#include "esp_event.h"
+#include "protocol_examples_common.h"
+#include "esp_websocket_client.h"
+#include "esp_event.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "freertos/event_groups.h"
 
-// An area of memory to use for input, output, and intermediate arrays.
-constexpr int kTensorArenaSize = 93 * 1024;
-static uint8_t tensor_arena[kTensorArenaSize];
-}  // namespace
+#include "esp_log.h"
+#include "esp_websocket_client.h"
+#include "esp_event.h"
+
+#include "img_converters.h"
+
+// Globals, used for compatibility with Arduino-style sketches.
+namespace
+{
+  tflite::ErrorReporter *error_reporter = nullptr;
+  const tflite::Model *model = nullptr;
+  tflite::MicroInterpreter *interpreter = nullptr;
+  TfLiteTensor *input = nullptr;
+
+  // An area of memory to use for input, output, and intermediate arrays.
+  constexpr int kTensorArenaSize = 93 * 1024;
+  static uint8_t tensor_arena[kTensorArenaSize];
+} // namespace
+
+static const char *TAG = "WEBSOCKET";
+esp_websocket_client_handle_t client;
+
+static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
+{
+  esp_websocket_event_data_t *data = (esp_websocket_event_data_t *)event_data;
+  switch (event_id)
+  {
+  case WEBSOCKET_EVENT_CONNECTED:
+    ESP_LOGI(TAG, "WEBSOCKET_EVENT_CONNECTED");
+    break;
+  case WEBSOCKET_EVENT_DISCONNECTED:
+    ESP_LOGI(TAG, "WEBSOCKET_EVENT_DISCONNECTED");
+    break;
+  case WEBSOCKET_EVENT_ERROR:
+    ESP_LOGI(TAG, "WEBSOCKET_EVENT_ERROR");
+    break;
+  }
+}
+
+static void websocket_app_start(void)
+{
+  esp_websocket_client_config_t websocket_cfg = {};
+
+  websocket_cfg.uri = CONFIG_WEBSOCKET_URI;
+
+  ESP_LOGI(TAG, "Connecting to %s...", websocket_cfg.uri);
+
+  client = esp_websocket_client_init(&websocket_cfg);
+  esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, websocket_event_handler, (void *)client);
+
+  esp_websocket_client_start(client);
+}
 
 // The name of this function is important for Arduino compatibility.
-void setup() {
+void setup()
+{
+  // Setup wifi and ws
+  ESP_LOGI(TAG, "[APP] Startup..");
+  ESP_LOGI(TAG, "[APP] Free memory: %d bytes", esp_get_free_heap_size());
+  ESP_LOGI(TAG, "[APP] IDF version: %s", esp_get_idf_version());
+  esp_log_level_set("*", ESP_LOG_INFO);
+  esp_log_level_set("WEBSOCKET_CLIENT", ESP_LOG_DEBUG);
+  esp_log_level_set("TRANSPORT_WS", ESP_LOG_DEBUG);
+  esp_log_level_set("TRANS_TCP", ESP_LOG_DEBUG);
+
+  ESP_ERROR_CHECK(nvs_flash_init());
+  ESP_ERROR_CHECK(esp_netif_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+  /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
+     * Read "Establishing Wi-Fi or Ethernet Connection" section in
+     * examples/protocols/README.md for more information about this function.
+     */
+  ESP_ERROR_CHECK(example_connect());
+
+  websocket_app_start();
+
   // Set up logging. Google style is to avoid globals or statics because of
   // lifetime uncertainty, but since this has a trivial destructor it's okay.
   // NOLINTNEXTLINE(runtime-global-variables)
@@ -49,7 +125,8 @@ void setup() {
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
   model = tflite::GetModel(g_person_detect_model_data);
-  if (model->version() != TFLITE_SCHEMA_VERSION) {
+  if (model->version() != TFLITE_SCHEMA_VERSION)
+  {
     TF_LITE_REPORT_ERROR(error_reporter,
                          "Model provided is schema version %d not equal "
                          "to supported version %d.",
@@ -81,7 +158,8 @@ void setup() {
 
   // Allocate memory from the tensor_arena for the model's tensors.
   TfLiteStatus allocate_status = interpreter->AllocateTensors();
-  if (allocate_status != kTfLiteOk) {
+  if (allocate_status != kTfLiteOk)
+  {
     TF_LITE_REPORT_ERROR(error_reporter, "AllocateTensors() failed");
     return;
   }
@@ -91,19 +169,33 @@ void setup() {
 }
 
 // The name of this function is important for Arduino compatibility.
-void loop() {
+void loop()
+{
   // Get image from provider.
   if (kTfLiteOk != GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
-                            input->data.uint8)) {
+                            input->data.uint8))
+  {
     TF_LITE_REPORT_ERROR(error_reporter, "Image capture failed.");
   }
 
+  uint8_t *jpeg;
+  size_t len;
+
+  fmt2jpg(input->data.uint8, 96 * 96, 96, 96, PIXFORMAT_GRAYSCALE, 90, &jpeg, &len);
+
+  if (esp_websocket_client_is_connected(client))
+  {
+    esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+  }
+  heap_caps_free(jpeg);
+
   // Run the model on this input and make sure it succeeds.
-  if (kTfLiteOk != interpreter->Invoke()) {
+  if (kTfLiteOk != interpreter->Invoke())
+  {
     TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed.");
   }
 
-  TfLiteTensor* output = interpreter->output(0);
+  TfLiteTensor *output = interpreter->output(0);
 
   // Process the inference results.
   uint8_t person_score = output->data.uint8[kPersonIndex];

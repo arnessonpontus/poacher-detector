@@ -68,12 +68,13 @@ limitations under the License.
 #define XCLK_FREQ 20000000
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-int app_camera_init();
+    int app_camera_init();
 
 #ifdef __cplusplus
 }
 #endif
-#endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_ESP_APP_CAMERA_ESP_H_
+#endif // TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_ESP_APP_CAMERA_ESP_H_
