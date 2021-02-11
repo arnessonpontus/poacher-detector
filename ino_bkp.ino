@@ -153,6 +153,7 @@ void capture()
   uint32_t ARRAY_LENGTH = frame->width * frame->height;
 
   uint8_t *gray_image = (uint8_t *)heap_caps_malloc(ARRAY_LENGTH, MALLOC_CAP_SPIRAM);
+  char *bg_image_str = (char *)heap_caps_malloc(ARRAY_LENGTH + 1, MALLOC_CAP_SPIRAM);
 
   for (int i = 0; i < H; i++)
   {
@@ -166,26 +167,39 @@ void capture()
   {
     is_first_frame = false;
 
-    memcpy(median, gray_image, ARRAY_LENGTH * sizeof(uint8_t));
+    //memcpy(median, gray_image, ARRAY_LENGTH * sizeof(uint8_t));
+    heap_caps_free(gray_image);
+    heap_caps_free(bg_image_str);
+    return;
   }
 
   for (int i = 0; i < ARRAY_LENGTH; i++)
   {
+    /*
     if (gray_image[i] > median[i]) {
       median[i] += ADOPTION_RATE;
     } else {
       median[i] -= ADOPTION_RATE;
     }
+    
 
     if (abs(gray_image[i] - median[i]) <= THRESH) {
-      gray_image[i] = 255;
+      gray_image[i] = 2;
     } else {
-      gray_image[i] = 0;
-    }
+      gray_image[i] = 1;
+    }*/
+    gray_image[i] = 1;
   }
 
   if (gray_number > 3)
   {
+    for (int i = 0; i < ARRAY_LENGTH; i++)
+    {
+      bg_image_str[i] = gray_image[i] + '0';
+    }
+
+    bg_image_str[ARRAY_LENGTH] = '\0';
+
     fs::FS &fs = SD_MMC;
     String path = "/esp/gray" + String(gray_number) + ".txt";
 
@@ -196,10 +210,14 @@ void capture()
     }
 
     Serial.println("Writing to file " + path);
-    
+
+    file.println(bg_image_str);
+
+    /*
     for (int i = 0; i < ARRAY_LENGTH; i++) {
       file.println(gray_image[i]);
     }
+    */
 
     file.close();
   }
