@@ -28,13 +28,15 @@ limitations under the License.
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-camera_fb_t* fb = NULL;
-static const char* TAG = "app_camera";
+camera_fb_t *fb = NULL;
+static const char *TAG = "app_camera";
 
 // Get the camera module ready
-TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
+TfLiteStatus InitCamera(tflite::ErrorReporter *error_reporter)
+{
   int ret = app_camera_init();
-  if (ret != 0) {
+  if (ret != 0)
+  {
     TF_LITE_REPORT_ERROR(error_reporter, "Camera init failed\n");
     return kTfLiteError;
   }
@@ -42,36 +44,46 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
   return kTfLiteOk;
 }
 
-extern "C" int capture_image() {
+extern "C" int capture_image()
+{
   fb = esp_camera_fb_get();
-  if (!fb) {
+
+  if (!fb)
+  {
     ESP_LOGE(TAG, "Camera capture failed");
     return -1;
   }
   return 0;
 }
 // Begin the capture and wait for it to finish
-TfLiteStatus PerformCapture(tflite::ErrorReporter* error_reporter,
-                            uint8_t* image_data) {
+TfLiteStatus PerformCapture(tflite::ErrorReporter *error_reporter,
+                            uint8_t *image_data)
+{
   /* 2. Get one image with camera */
   int ret = capture_image();
-  if (ret != 0) {
+  if (ret != 0)
+  {
     return kTfLiteError;
   }
   TF_LITE_REPORT_ERROR(error_reporter, "Image Captured\n");
+
   memcpy(image_data, fb->buf, fb->len);
+
   esp_camera_fb_return(fb);
   /* here the esp camera can give you grayscale image directly */
   return kTfLiteOk;
 }
 
 // Get an image from the camera module
-TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
-                      int image_height, int channels, uint8_t* image_data) {
+TfLiteStatus GetImage(tflite::ErrorReporter *error_reporter, int image_width,
+                      int image_height, int channels, uint8_t *image_data)
+{
   static bool g_is_camera_initialized = false;
-  if (!g_is_camera_initialized) {
+  if (!g_is_camera_initialized)
+  {
     TfLiteStatus init_status = InitCamera(error_reporter);
-    if (init_status != kTfLiteOk) {
+    if (init_status != kTfLiteOk)
+    {
       TF_LITE_REPORT_ERROR(error_reporter, "InitCamera failed\n");
       return init_status;
     }
@@ -80,7 +92,9 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
   /* Camera Captures Image of size 96 x 96  which is of the format grayscale
    * thus, no need to crop or process further , directly send it to tf */
   TfLiteStatus capture_status = PerformCapture(error_reporter, image_data);
-  if (capture_status != kTfLiteOk) {
+
+  if (capture_status != kTfLiteOk)
+  {
     TF_LITE_REPORT_ERROR(error_reporter, "PerformCapture failed\n");
     return capture_status;
   }
