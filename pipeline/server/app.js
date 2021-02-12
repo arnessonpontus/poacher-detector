@@ -17,18 +17,17 @@ wsServer.on("connection", (ws, req) => {
   connectedClients.push(ws);
 
   ws.on("message", (data) => {
-    console.log("YAY got a mess");
-    console.log(data);
     connectedClients.forEach((ws, i) => {
       if (ws.readyState === ws.OPEN) {
         ws.send(data);
         const buf = Buffer.from(data);
         const date = new Date();
-        fs.writeFile('saved_images/image_'+ date.toISOString() + ".jpg", buf, "binary",(err) => {
-          if (err) {
-            console.log("Success")
+        const imagePath = 'saved_images/image_'+ date.toISOString() + ".jpg";
+        fs.writeFile(imagePath, buf, "binary",(err) => {
+          if (!err) {
+            console.log("Image written sucessfully to " + imagePath)
           } else {
-            console.log(err)
+            console.log("Error when writing image: " + err)
           }
         });
       } else {
