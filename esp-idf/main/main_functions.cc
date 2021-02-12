@@ -45,6 +45,9 @@ limitations under the License.
 
 #include "img_converters.h"
 
+#define W 96
+#define H 96
+
 // Globals, used for compatibility with Arduino-style sketches.
 namespace
 {
@@ -178,16 +181,11 @@ void loop()
     TF_LITE_REPORT_ERROR(error_reporter, "Image capture failed.");
   }
 
-  uint8_t *jpeg;
-  size_t len;
-
-  fmt2jpg(input->data.uint8, 96 * 96, 96, 96, PIXFORMAT_GRAYSCALE, 90, &jpeg, &len);
-
-  if (esp_websocket_client_is_connected(client))
-  {
-    esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
-  }
-  heap_caps_free(jpeg);
+  // Copy because invoke changes the input. Uses normal malloc since heap_caps_malloc gives NULL
+  uint8_t *temp_input = (uint8_t *)malloc(W * H);
+  if (temp_input == NULL)
+    ESP_LOGI(TAG, "NULL TEMP_INPUT");
+  memcpy(temp_input, input->data.uint8, W * H);
 
   // Run the model on this input and make sure it succeeds.
   if (kTfLiteOk != interpreter->Invoke())
@@ -200,5 +198,21 @@ void loop()
   // Process the inference results.
   uint8_t person_score = output->data.uint8[kPersonIndex];
   uint8_t no_person_score = output->data.uint8[kNotAPersonIndex];
-  RespondToDetection(error_reporter, person_score, no_person_score);
+  bool human_detected = RespondToDetection(error_reporter, person_score, no_person_score);
+
+  if (human_detected)
+  {
+    uint8_t *jpeg;
+    size_t len;
+
+    fmt2jpg(temp_input, W * H, W, H, PIXFORMAT_GRAYSCALE, 90, &jpeg, &len);
+
+    if (esp_websocket_client_is_connected(client))
+    {
+      esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+    }
+
+    heap_caps_free(jpeg);
+  }
+  heap_caps_free(temp_input);
 }

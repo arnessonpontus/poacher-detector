@@ -1,6 +1,7 @@
 const path = require("path");
 const express = require("express");
 const WebSocket = require("ws");
+const fs = require('fs');
 const app = express();
 
 const WS_PORT = 8888;
@@ -21,6 +22,15 @@ wsServer.on("connection", (ws, req) => {
     connectedClients.forEach((ws, i) => {
       if (ws.readyState === ws.OPEN) {
         ws.send(data);
+        const buf = Buffer.from(data);
+        const date = new Date();
+        fs.writeFile('saved_images/image_'+ date.toISOString() + ".jpg", buf, "binary",(err) => {
+          if (err) {
+            console.log("Success")
+          } else {
+            console.log(err)
+          }
+        });
       } else {
         connectedClients.splice(i, 1);
       }

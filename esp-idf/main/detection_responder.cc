@@ -25,9 +25,11 @@ limitations under the License.
 // This dummy implementation writes person and no person scores to the error
 // console. Real applications will want to take some custom action instead, and
 // should implement their own versions of this function.
-void RespondToDetection(tflite::ErrorReporter *error_reporter,
+bool RespondToDetection(tflite::ErrorReporter *error_reporter,
                         uint8_t person_score, uint8_t no_person_score)
 {
+
+  bool human_detected = false;
 
   if (person_score > no_person_score && person_score > 200)
   {
@@ -36,8 +38,12 @@ void RespondToDetection(tflite::ErrorReporter *error_reporter,
     gpio_set_level((gpio_num_t)4, 1);
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     gpio_set_level((gpio_num_t)4, 0);
+
+    human_detected = true;
   }
 
   TF_LITE_REPORT_ERROR(error_reporter, "person score:%d no person score %d",
                        person_score, no_person_score);
+
+  return human_detected;
 }
