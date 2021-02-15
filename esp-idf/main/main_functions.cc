@@ -37,9 +37,6 @@ limitations under the License.
 #include "freertos/semphr.h"
 #include "freertos/event_groups.h"
 
-#include "nvs.h"
-#include "nvs_flash.h"
-
 #include "esp_log.h"
 
 #include "img_converters.h"
@@ -53,6 +50,7 @@ limitations under the License.
 #include "driver/spi_common.h"
 #include "sdmmc_cmd.h"
 #include "sdkconfig.h"
+#include "preferences.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include "driver/sdmmc_host.h"
@@ -84,80 +82,9 @@ namespace
   static uint8_t tensor_arena[kTensorArenaSize];
 } // namespace
 
-static const char *TAG = "WEBSOCKET";
+static const char *TAG = "MAIN_FUNCTIONS";
 esp_websocket_client_handle_t client;
-
-uint32_t _handle = 0;
-bool _started = false;
-bool _readOnly = false;
 unsigned int pictureNumber = 0;
-
-bool begin(const char *name, bool readOnly, const char *partition_label = NULL)
-{
-  if (_started)
-  {
-    return false;
-  }
-  _readOnly = readOnly;
-  esp_err_t err = ESP_OK;
-  if (partition_label != NULL)
-  {
-    err = nvs_flash_init_partition(partition_label);
-    if (err)
-    {
-      //log_e("nvs_flash_init_partition failed: %s", nvs_error(err));
-      return false;
-    }
-    err = nvs_open_from_partition(partition_label, name, readOnly ? NVS_READONLY : NVS_READWRITE, &_handle);
-  }
-  else
-  {
-    err = nvs_open(name, readOnly ? NVS_READONLY : NVS_READWRITE, &_handle);
-  }
-  if (err)
-  {
-    //log_e("nvs_open failed: %s", nvs_error(err));
-    return false;
-  }
-  _started = true;
-  return true;
-}
-
-size_t putUInt(const char *key, uint32_t value)
-{
-  if (!_started || !key || _readOnly)
-  {
-    return 0;
-  }
-  esp_err_t err = nvs_set_u32(_handle, key, value);
-  if (err)
-  {
-    //log_e("nvs_set_u32 fail: %s %s", key, nvs_error(err));
-    return 0;
-  }
-  err = nvs_commit(_handle);
-  if (err)
-  {
-    //log_e("nvs_commit fail: %s %s", key, nvs_error(err));
-    return 0;
-  }
-  return 4;
-}
-
-uint32_t getUInt(const char *key, const uint32_t defaultValue)
-{
-  uint32_t value = defaultValue;
-  if (!_started || !key)
-  {
-    return value;
-  }
-  esp_err_t err = nvs_get_u32(_handle, key, &value);
-  if (err)
-  {
-    //log_v("nvs_get_u32 fail: %s %s", key, nvs_error(err));
-  }
-  return value;
-}
 
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -254,8 +181,8 @@ void setup()
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-  begin("poach_det", false);
-  pictureNumber = getUInt("camera_counter", 0);
+  pref_begin("poach_det", false);
+  pictureNumber = pref_getUInt("camera_counter", 0);
 
   /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
@@ -363,7 +290,7 @@ void loop()
     fclose(f);
     ESP_LOGI(TAG, "File written");
 
-    putUInt("camera_counter", ++pictureNumber);
+    pref_putUInt("camera_counter", ++pictureNumber);
 
     heap_caps_free(jpeg);
   }
