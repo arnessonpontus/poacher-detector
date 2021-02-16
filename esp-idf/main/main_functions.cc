@@ -184,6 +184,8 @@ void setup()
   pref_begin("poach_det", false);
   pictureNumber = pref_getUInt("camera_counter", 0);
 
+  setup_sdcard();
+
   /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
      * examples/protocols/README.md for more information about this function.
@@ -231,8 +233,6 @@ void setup()
 
   // Get information about the memory area to use for the model's input.
   input = interpreter->input(0);
-
-  setup_sdcard();
 }
 
 // The name of this function is important for Arduino compatibility.
@@ -246,7 +246,7 @@ void loop()
   }
 
   // Copy because invoke changes the input. Uses normal malloc since heap_caps_malloc gives NULL
-  uint8_t *temp_input = (uint8_t *)malloc(W * H);
+  uint8_t *temp_input = (uint8_t *)heap_caps_malloc(W * H, MALLOC_CAP_SPIRAM);
   if (temp_input == NULL)
     ESP_LOGI(TAG, "NULL TEMP_INPUT");
   memcpy(temp_input, input->data.uint8, W * H);
