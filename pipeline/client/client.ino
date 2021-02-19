@@ -2,6 +2,7 @@
 
 #include "esp_camera.h"
 #include "camera_pins.h"
+#include "image_util.h"
 
 #include <FS.h>
 #include "SD_MMC.h"
@@ -261,7 +262,11 @@ bool motion_detect() {
     uint8_t* jpeg;
     size_t len;
 
-    fmt2jpg(cropped_img, counter, sqrt(counter), sqrt(counter), PIXFORMAT_GRAYSCALE, 90, &jpeg, &len);
+    uint8_t* resized_img = (uint8_t*) heap_caps_malloc(96 * 96, MALLOC_CAP_SPIRAM);
+
+    image_resize_linear(resized_img, cropped_img, 96, 96, 1, sqrt(counter), sqrt(counter));
+
+    fmt2jpg(resized_img, 96 * 96, 96, 96, PIXFORMAT_GRAYSCALE, 90, &jpeg, &len);
     
     //bg_image_str[W*H] = '\0';
 
@@ -289,7 +294,7 @@ bool motion_detect() {
     heap_caps_free(jpeg);
     heap_caps_free(cropped_img);
     heap_caps_free(bg_image_str);
-
+    heap_caps_free(resized_img);
     return (1.0 * changes / blocks) > IMAGE_DIFF_THRESHOLD;
 }
 
