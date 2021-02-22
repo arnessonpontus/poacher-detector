@@ -45,7 +45,7 @@ limitations under the License.
  * FRAMESIZE_SXGA,     // 1280x1024
  * FRAMESIZE_UXGA,     // 1600x1200
  */
-#define CAMERA_FRAME_SIZE FRAMESIZE_96X96
+#define CAMERA_FRAME_SIZE FRAMESIZE_QVGA
 
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1

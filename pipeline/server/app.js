@@ -1,7 +1,7 @@
 const path = require("path");
 const express = require("express");
 const WebSocket = require("ws");
-const fs = require('fs');
+const fs = require("fs");
 const app = express();
 
 const WS_PORT = 8888;
@@ -22,14 +22,14 @@ wsServer.on("connection", (ws, req) => {
         ws.send(data);
         const buf = Buffer.from(data);
         const date = new Date();
-        const imagePath = 'saved_images/image_'+ date.toISOString() + ".jpg";
-        fs.writeFile(imagePath, buf, "binary",(err) => {
-          if (!err) {
-            console.log("Image written sucessfully to " + imagePath)
-          } else {
-            console.log("Error when writing image: " + err)
-          }
-        });
+        const imagePath = "saved_images/image_" + date.toISOString() + ".jpg";
+        // fs.writeFile(imagePath, buf, "binary",(err) => {
+        //   if (!err) {
+        //     console.log("Image written sucessfully to " + imagePath)
+        //   } else {
+        //     console.log("Error when writing image: " + err)
+        //   }
+        // });
       } else {
         connectedClients.splice(i, 1);
       }
