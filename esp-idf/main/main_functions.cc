@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "main_functions.h"
+#include "image_util.h"
 #include "detection_responder.h"
 #include "image_provider.h"
 #include "model_settings.h"
@@ -63,8 +64,16 @@ limitations under the License.
 #define SPI_DMA_CHAN 1
 #endif //SPI_DMA_CHAN
 
-#define W 96
-#define H 96
+#define MODEL_INPUT_W 96
+#define MODEL_INPUT_H 96
+
+#define WIDTH 320
+#define HEIGHT 240
+#define BLOCK_SIZE 10
+#define W (WIDTH / BLOCK_SIZE)
+#define H (HEIGHT / BLOCK_SIZE)
+#define BLOCK_DIFF_THRESHOLD 0.1
+#define IMAGE_DIFF_THRESHOLD 0.01
 
 const char *nvs_errors[] = {"OTHER", "NOT_INITIALIZED", "NOT_FOUND", "TYPE_MISMATCH", "READ_ONLY", "NOT_ENOUGH_SPACE", "INVALID_NAME", "INVALID_HANDLE", "REMOVE_FAILED", "KEY_TOO_LONG", "PAGE_FULL", "INVALID_STATE", "INVALID_LENGTH"};
 #define nvs_error(e) (((e) > ESP_ERR_NVS_BASE) ? nvs_errors[(e) & ~(ESP_ERR_NVS_BASE)] : nvs_errors[0])
@@ -85,6 +94,170 @@ namespace
 static const char *TAG = "MAIN_FUNCTIONS";
 esp_websocket_client_handle_t client;
 unsigned int pictureNumber = 0;
+uint16_t prev_frame[H][W] = { 0 };
+uint16_t current_frame[H][W] = { 0 };
+
+bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
+    uint16_t changes = 0;
+    const uint16_t blocks = (WIDTH * HEIGHT) / (BLOCK_SIZE * BLOCK_SIZE);
+    
+    uint16_t accumelated_x = 0;
+    uint16_t accumelated_y = 0;
+    float mean_x = 0;
+    float mean_y = 0;
+    uint16_t diff_sum_x = 0;
+    uint16_t diff_sum_y = 0;
+    float variance_x = 0;
+    float variance_y = 0;
+    uint16_t pixel_counter = 0;
+    
+    char *bg_image_str = (char *)heap_caps_malloc(W*H + 1, MALLOC_CAP_SPIRAM);
+    uint8_t* cropped_img = (uint8_t*) heap_caps_malloc(WIDTH*HEIGHT, MALLOC_CAP_SPIRAM);
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            uint16_t i = x + y * W;
+            float current = current_frame[y][x];
+            float prev = prev_frame[y][x];
+            float delta = abs(current - prev) / prev;
+
+            if (delta >= BLOCK_DIFF_THRESHOLD) {
+                changes += 1;
+                bg_image_str[i] = '0';
+                pixel_counter++;
+                accumelated_x += i % W;
+                accumelated_y += floor(i / W);
+            } else {
+                bg_image_str[x + y * W] = '1';
+            }
+        }
+    }
+    
+    if (pixel_counter < 5) {
+      heap_caps_free(bg_image_str);
+      heap_caps_free(cropped_img);
+      return false;
+    }
+    
+    mean_x = (float) accumelated_x/pixel_counter;
+    mean_y = (float) accumelated_y/pixel_counter;
+    
+    for (int j = 0; j < W * H; j++) {
+      if (bg_image_str[j] == '0') {
+        diff_sum_x += pow((j % 32 - mean_x), 2);
+        diff_sum_y += pow((floor(j / 32) - mean_y), 2);
+      }
+    }
+
+    variance_x = (float) diff_sum_x / pixel_counter;
+    variance_y = (float) diff_sum_y / pixel_counter;
+
+    float half_width = MAX(variance_x, variance_y) * 1.2;
+
+    // Mult by 10 to get pixel in original img
+    mean_x *= 10;
+    mean_y *= 10;
+    half_width *= 10;
+    half_width = MIN(half_width, (float) (HEIGHT / 2));
+
+    float p1_x = (mean_x - half_width);
+    float p1_y = (mean_y - half_width);
+    
+    float p2_x = (mean_x + half_width);
+    float p2_y = (mean_y + half_width);
+
+    // Shift if square is outside image border
+    if (p1_x < 0) {
+      p1_x = 0;
+      p2_x = 2 * half_width;
+    }
+    
+    if (p1_y < 0) {
+       p1_y = 0;
+       p2_y = 2 * half_width;
+    }
+
+    if (p2_x > WIDTH) {
+       p2_x = WIDTH;
+       p1_x = WIDTH - 2 * half_width;
+    }
+
+    if (p2_y > HEIGHT) {
+      p2_y = HEIGHT;
+      p1_y = HEIGHT - 2 * half_width;
+    }
+
+    int i_p1_x = (int) p1_x;
+    int i_p1_y = (int) p1_y;
+    
+    int i_p2_x = (int) p2_x;
+    int i_p2_y = (int) p2_y;
+
+    if (i_p2_x - i_p1_x > i_p2_y - i_p1_y) {
+      i_p2_y++;
+    } else if (i_p2_x - i_p1_x < i_p2_y - i_p1_y) {
+      i_p2_x++;
+    }
+
+    uint16_t counter = 0;
+    for (int i = 0; i < WIDTH * HEIGHT; i++) {
+      uint16_t x = i % WIDTH;
+      uint16_t y = floor(i / WIDTH);
+   
+      if (x >= i_p1_x && x < i_p2_x && y >= i_p1_y && y < i_p2_y) {
+        cropped_img[counter] = original_image[i];
+        counter++;
+      }
+    }
+    
+    // uint8_t* resized_img = (uint8_t*) heap_caps_malloc(96 * 96, MALLOC_CAP_SPIRAM);
+    
+    image_resize_linear(resized_img, cropped_img, 96, 96, 1, sqrt(counter), sqrt(counter));
+
+    
+    //bg_image_str[W*H] = '\0';
+ 
+    heap_caps_free(cropped_img);
+    heap_caps_free(bg_image_str);
+    ESP_LOGI(TAG, "Changed %d", changes);
+    ESP_LOGI(TAG, "out of %d blocks", blocks);
+    return (1.0 * changes / blocks) > IMAGE_DIFF_THRESHOLD;
+}
+
+void update_frame() {
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            prev_frame[y][x] = current_frame[y][x];
+        }
+    }
+}
+
+bool downscale(uint8_t* image) {
+    // set all 0s in current frame
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+            current_frame[y][x] = 0;
+
+
+    // down-sample image in blocks
+    for (uint32_t i = 0; i < WIDTH * HEIGHT; i++) {
+        const uint16_t x = i % WIDTH;
+        const uint16_t y = floor(i / WIDTH);
+        const uint8_t block_x = floor(x / BLOCK_SIZE);
+        const uint8_t block_y = floor(y / BLOCK_SIZE);
+        const uint8_t pixel = image[i];
+        const uint16_t current = current_frame[block_y][block_x];
+
+        // average pixels in block (accumulate)
+        current_frame[block_y][block_x] += pixel;
+    }
+
+    // average pixels in block (rescale)
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+            current_frame[y][x] /= BLOCK_SIZE * BLOCK_SIZE;
+
+    return true;
+}
 
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -238,18 +411,39 @@ void setup()
 // The name of this function is important for Arduino compatibility.
 void loop()
 {
+  uint8_t* input_image = (uint8_t*) heap_caps_malloc(WIDTH * HEIGHT, MALLOC_CAP_SPIRAM);
+
   // Get image from provider.
   if (kTfLiteOk != GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
-                            input->data.uint8))
+                            input_image))
   {
     TF_LITE_REPORT_ERROR(error_reporter, "Image capture failed.");
   }
+  input->data.uint8 = input_image;
 
+  downscale(input->data.uint8);
+
+  uint8_t* jpeg;
+  size_t len;
+  uint8_t* resized_img = (uint8_t*) heap_caps_malloc(96*96, MALLOC_CAP_SPIRAM);
+  if (motion_detect(input->data.uint8, resized_img)) {
+      ESP_LOGI(TAG, "Motion detected");
+      fmt2jpg(resized_img, 96 * 96, 96, 96, PIXFORMAT_GRAYSCALE, 90, &jpeg, &len);
+
+      if (esp_websocket_client_is_connected(client))
+      {
+        esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+      }
+  }
+
+  update_frame();
+
+  /*
   // Copy because invoke changes the input. Uses normal malloc since heap_caps_malloc gives NULL
-  uint8_t *temp_input = (uint8_t *)heap_caps_malloc(W * H, MALLOC_CAP_SPIRAM);
+  uint8_t *temp_input = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H, MALLOC_CAP_SPIRAM);
   if (temp_input == NULL)
     ESP_LOGI(TAG, "NULL TEMP_INPUT");
-  memcpy(temp_input, input->data.uint8, W * H);
+  memcpy(temp_input, input->data.uint8, MODEL_INPUT_W * MODEL_INPUT_H);
 
   // Run the model on this input and make sure it succeeds.
   if (kTfLiteOk != interpreter->Invoke())
@@ -269,7 +463,7 @@ void loop()
     uint8_t *jpeg;
     size_t len;
 
-    fmt2jpg(temp_input, W * H, W, H, PIXFORMAT_GRAYSCALE, 90, &jpeg, &len);
+    fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 90, &jpeg, &len);
 
     if (esp_websocket_client_is_connected(client))
     {
@@ -293,6 +487,12 @@ void loop()
     pref_putUInt("camera_counter", ++pictureNumber);
 
     heap_caps_free(jpeg);
+    
   }
+  
   heap_caps_free(temp_input);
+  */
+ heap_caps_free(jpeg);
+ heap_caps_free(input_image);
+ //heap_caps_free(resized_img);
 }
