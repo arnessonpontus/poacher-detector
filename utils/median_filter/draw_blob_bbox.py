@@ -44,11 +44,12 @@ for i, filename in enumerate(sorted(glob.glob("./motion_masks/*.txt"))):
 
     for j, char in enumerate(line.strip()):
         if char == '0':
-            diff_sum_x += (j % 32 - mean_x)**2
-            diff_sum_y += (math.floor(j / 32) - mean_y)**2
+            diff_sum_x += abs(j % 32 - mean_x)
+            diff_sum_y += abs(math.floor(j / 32) - mean_y)
     
-    variance_x = diff_sum_x/pixel_counter
-    variance_y = diff_sum_y/pixel_counter
+    variance_x = (diff_sum_x/pixel_counter)*2
+    variance_y = (diff_sum_y/pixel_counter)*2
+    
 
     img_1d = np.array(img_array)
 
