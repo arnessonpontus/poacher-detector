@@ -162,6 +162,8 @@ bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
     half_width *= 10;
     half_width = MINIMUM(half_width, (float) (HEIGHT / 2));
 
+    mean_y -= 0.5 * half_width; // Shift crop towards head
+
     float p1_x = (mean_x - half_width);
     float p1_y = (mean_y - half_width);
     
