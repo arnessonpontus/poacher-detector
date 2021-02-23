@@ -72,8 +72,11 @@ limitations under the License.
 #define BLOCK_SIZE 10
 #define W (WIDTH / BLOCK_SIZE)
 #define H (HEIGHT / BLOCK_SIZE)
-#define BLOCK_DIFF_THRESHOLD 0.1
+#define BLOCK_DIFF_THRESHOLD 0.25
 #define IMAGE_DIFF_THRESHOLD 0.01
+
+#define MAXIMUM(x, y) (((x) > (y)) ? (x) : (y))
+#define MINIMUM(x, y) (((x) < (y)) ? (x) : (y))
 
 const char *nvs_errors[] = {"OTHER", "NOT_INITIALIZED", "NOT_FOUND", "TYPE_MISMATCH", "READ_ONLY", "NOT_ENOUGH_SPACE", "INVALID_NAME", "INVALID_HANDLE", "REMOVE_FAILED", "KEY_TOO_LONG", "PAGE_FULL", "INVALID_STATE", "INVALID_LENGTH"};
 #define nvs_error(e) (((e) > ESP_ERR_NVS_BASE) ? nvs_errors[(e) & ~(ESP_ERR_NVS_BASE)] : nvs_errors[0])
@@ -111,7 +114,7 @@ bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
     float variance_y = 0;
     uint16_t pixel_counter = 0;
     
-    char *bg_image_str = (char *)heap_caps_malloc(W*H + 1, MALLOC_CAP_SPIRAM);
+    uint8_t *bg_image = (uint8_t *)heap_caps_malloc(W*H, MALLOC_CAP_SPIRAM);
     uint8_t* cropped_img = (uint8_t*) heap_caps_malloc(WIDTH*HEIGHT, MALLOC_CAP_SPIRAM);
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
@@ -122,18 +125,18 @@ bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
 
             if (delta >= BLOCK_DIFF_THRESHOLD) {
                 changes += 1;
-                bg_image_str[i] = '0';
+                bg_image[i] = 0;
                 pixel_counter++;
                 accumelated_x += i % W;
                 accumelated_y += floor(i / W);
             } else {
-                bg_image_str[x + y * W] = '1';
+                bg_image[x + y * W] = 255;
             }
         }
     }
     
     if (pixel_counter < 5) {
-      heap_caps_free(bg_image_str);
+      heap_caps_free(bg_image);
       heap_caps_free(cropped_img);
       return false;
     }
@@ -142,22 +145,22 @@ bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
     mean_y = (float) accumelated_y/pixel_counter;
     
     for (int j = 0; j < W * H; j++) {
-      if (bg_image_str[j] == '0') {
-        diff_sum_x += pow((j % 32 - mean_x), 2);
-        diff_sum_y += pow((floor(j / 32) - mean_y), 2);
+      if (bg_image[j] == 0) {
+        diff_sum_x += abs(j % 32 - mean_x);
+        diff_sum_y += abs(floor(j / 32) - mean_y);
       }
     }
 
-    variance_x = (float) diff_sum_x / pixel_counter;
-    variance_y = (float) diff_sum_y / pixel_counter;
+    variance_x = ((float) diff_sum_x / pixel_counter) * 2.5;
+    variance_y = ((float) diff_sum_y / pixel_counter) * 2.5;
 
-    float half_width = MAX(variance_x, variance_y) * 1.2;
+    float half_width = MAXIMUM(variance_x, variance_y) * 1.2;
 
     // Mult by 10 to get pixel in original img
     mean_x *= 10;
     mean_y *= 10;
     half_width *= 10;
-    half_width = MIN(half_width, (float) (HEIGHT / 2));
+    half_width = MINIMUM(half_width, (float) (HEIGHT / 2));
 
     float p1_x = (mean_x - half_width);
     float p1_y = (mean_y - half_width);
@@ -213,11 +216,18 @@ bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
     
     image_resize_linear(resized_img, cropped_img, 96, 96, 1, sqrt(counter), sqrt(counter));
 
-    
-    //bg_image_str[W*H] = '\0';
+    uint8_t* jpeg;
+    size_t len;
+    fmt2jpg(bg_image, W * H, W, H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+
+    // if (esp_websocket_client_is_connected(client))
+    // {
+    //   esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+    // }
  
+    heap_caps_free(jpeg);
     heap_caps_free(cropped_img);
-    heap_caps_free(bg_image_str);
+    heap_caps_free(bg_image);
     ESP_LOGI(TAG, "Changed %d", changes);
     ESP_LOGI(TAG, "out of %d blocks", blocks);
     return (1.0 * changes / blocks) > IMAGE_DIFF_THRESHOLD;
@@ -428,7 +438,7 @@ void loop()
   uint8_t* resized_img = (uint8_t*) heap_caps_malloc(96*96, MALLOC_CAP_SPIRAM);
   if (motion_detect(input->data.uint8, resized_img)) {
       ESP_LOGI(TAG, "Motion detected");
-      fmt2jpg(resized_img, 96 * 96, 96, 96, PIXFORMAT_GRAYSCALE, 90, &jpeg, &len);
+      fmt2jpg(resized_img, 96 * 96, 96, 96, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
       if (esp_websocket_client_is_connected(client))
       {
@@ -463,7 +473,7 @@ void loop()
     uint8_t *jpeg;
     size_t len;
 
-    fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 90, &jpeg, &len);
+    fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
     if (esp_websocket_client_is_connected(client))
     {
