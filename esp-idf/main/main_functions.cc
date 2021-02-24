@@ -73,7 +73,7 @@ limitations under the License.
 #define W (WIDTH / BLOCK_SIZE)
 #define H (HEIGHT / BLOCK_SIZE)
 #define BLOCK_DIFF_THRESHOLD 0.25
-#define IMAGE_DIFF_THRESHOLD 0.01
+#define IMAGE_DIFF_THRESHOLD 0.007
 
 #define MAXIMUM(x, y) (((x) > (y)) ? (x) : (y))
 #define MINIMUM(x, y) (((x) < (y)) ? (x) : (y))
@@ -99,6 +99,7 @@ esp_websocket_client_handle_t client;
 unsigned int pictureNumber = 0;
 uint16_t prev_frame[H][W] = { 0 };
 uint16_t current_frame[H][W] = { 0 };
+uint8_t bg_image[H * W] = { 0 };
 
 bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
     uint16_t changes = 0;
@@ -114,8 +115,6 @@ bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
     float variance_y = 0;
     uint16_t pixel_counter = 0;
     
-    uint8_t *bg_image = (uint8_t *)heap_caps_malloc(W*H, MALLOC_CAP_SPIRAM);
-    uint8_t* cropped_img = (uint8_t*) heap_caps_malloc(WIDTH*HEIGHT, MALLOC_CAP_SPIRAM);
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
             uint16_t i = x + y * W;
@@ -125,29 +124,33 @@ bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
 
             if (delta >= BLOCK_DIFF_THRESHOLD) {
                 changes += 1;
-                bg_image[i] = 0;
+                bg_image[i] = 2;
                 pixel_counter++;
                 accumelated_x += i % W;
                 accumelated_y += floor(i / W);
             } else {
-                bg_image[x + y * W] = 255;
+                if (bg_image[i] > 0) bg_image[i] = bg_image[i] - 1;   
             }
         }
     }
     
-    if (pixel_counter < 5) {
-      heap_caps_free(bg_image);
-      heap_caps_free(cropped_img);
+    if (pixel_counter < 1) {
       return false;
     }
     
     mean_x = (float) accumelated_x/pixel_counter;
     mean_y = (float) accumelated_y/pixel_counter;
     
+    uint8_t* bg_mask_binary = (uint8_t*) heap_caps_malloc(W * H, MALLOC_CAP_SPIRAM);
+    uint8_t* cropped_img = (uint8_t*) heap_caps_malloc(WIDTH*HEIGHT, MALLOC_CAP_SPIRAM);
+
     for (int j = 0; j < W * H; j++) {
-      if (bg_image[j] == 0) {
+      if (bg_image[j] > 0) {
+        bg_mask_binary[j] = 255;
         diff_sum_x += abs(j % 32 - mean_x);
         diff_sum_y += abs(floor(j / 32) - mean_y);
+      } else {
+        bg_mask_binary[j] = 0;
       }
     }
 
@@ -162,7 +165,8 @@ bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
     half_width *= 10;
     half_width = MINIMUM(half_width, (float) (HEIGHT / 2));
 
-    mean_y -= 0.5 * half_width; // Shift crop towards head
+    // Shift crop towards head
+    mean_y -= 0.5 * half_width; 
 
     float p1_x = (mean_x - half_width);
     float p1_y = (mean_y - half_width);
@@ -213,23 +217,10 @@ bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
         counter++;
       }
     }
-    
-    // uint8_t* resized_img = (uint8_t*) heap_caps_malloc(96 * 96, MALLOC_CAP_SPIRAM);
-    
+        
     image_resize_linear(resized_img, cropped_img, 96, 96, 1, sqrt(counter), sqrt(counter));
-
-    uint8_t* jpeg;
-    size_t len;
-    fmt2jpg(bg_image, W * H, W, H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
-
-    // if (esp_websocket_client_is_connected(client))
-    // {
-    //   esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
-    // }
- 
-    heap_caps_free(jpeg);
+    heap_caps_free(bg_mask_binary);
     heap_caps_free(cropped_img);
-    heap_caps_free(bg_image);
     ESP_LOGI(TAG, "Changed %d", changes);
     ESP_LOGI(TAG, "out of %d blocks", blocks);
     return (1.0 * changes / blocks) > IMAGE_DIFF_THRESHOLD;
@@ -435,7 +426,11 @@ void loop()
 
   downscale(input->data.uint8);
 
-  uint8_t* jpeg;
+  uint8_t* jpeg = (uint8_t*) heap_caps_malloc(96*96, MALLOC_CAP_SPIRAM);
+  if (jpeg == NULL) {
+    ESP_LOGI(TAG, "Jpeg is NULL");
+  }
+  
   size_t len;
   uint8_t* resized_img = (uint8_t*) heap_caps_malloc(96*96, MALLOC_CAP_SPIRAM);
   if (motion_detect(input->data.uint8, resized_img)) {
@@ -504,7 +499,7 @@ void loop()
   
   heap_caps_free(temp_input);
   */
- heap_caps_free(jpeg);
- heap_caps_free(input_image);
- //heap_caps_free(resized_img);
+  heap_caps_free(jpeg);
+  heap_caps_free(input_image);
+  heap_caps_free(resized_img);
 }
