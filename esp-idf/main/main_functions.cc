@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "main_functions.h"
 #include "image_util.h"
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include "stb_image_resize.h"
+#define STBIR_ASSERT()
 #include "detection_responder.h"
 #include "image_provider.h"
 #include "model_settings.h"
@@ -244,6 +247,8 @@ bool motion_detect(uint8_t *original_image, uint8_t *resized_img)
     }
   }
 
+  //int res = stbir_resize_uint8(cropped_img, sqrt(counter), sqrt(counter), 0, resized_img, 96, 96, 0, 1);
+  //ESP_LOGI(TAG, "RES: %d", res);
   image_resize_linear(resized_img, cropped_img, 96, 96, 1, sqrt(counter), sqrt(counter));
   heap_caps_free(bg_mask_binary);
   heap_caps_free(cropped_img);
@@ -494,6 +499,7 @@ void loop()
 
     input->data.uint8 = resized_img;
   } else {
+    //stbir_resize_uint8(input->data.uint8, WIDTH, HEIGHT, 0, resized_img, 96, 96, 0, 1);
     image_resize_linear(resized_img, input->data.uint8, 96, 96, 1, WIDTH, HEIGHT);
     input->data.uint8 = resized_img;
   }
