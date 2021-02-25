@@ -97,169 +97,204 @@ namespace
 static const char *TAG = "MAIN_FUNCTIONS";
 esp_websocket_client_handle_t client;
 unsigned int pictureNumber = 0;
-uint16_t prev_frame[H][W] = { 0 };
-uint16_t current_frame[H][W] = { 0 };
-uint8_t bg_image[H * W] = { 0 };
+uint16_t *prev_frame;
+uint16_t* current_frame;
+uint8_t* bg_image;
 
-bool motion_detect(uint8_t* original_image, uint8_t* resized_img) {
-    uint16_t changes = 0;
-    const uint16_t blocks = (WIDTH * HEIGHT) / (BLOCK_SIZE * BLOCK_SIZE);
-    
-    uint16_t accumelated_x = 0;
-    uint16_t accumelated_y = 0;
-    float mean_x = 0;
-    float mean_y = 0;
-    uint16_t diff_sum_x = 0;
-    uint16_t diff_sum_y = 0;
-    float variance_x = 0;
-    float variance_y = 0;
-    uint16_t pixel_counter = 0;
-    
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            uint16_t i = x + y * W;
-            float current = current_frame[y][x];
-            float prev = prev_frame[y][x];
-            float delta = abs(current - prev) / prev;
+bool motion_detect(uint8_t *original_image, uint8_t *resized_img)
+{
+  uint16_t changes = 0;
+  const uint16_t blocks = (WIDTH * HEIGHT) / (BLOCK_SIZE * BLOCK_SIZE);
 
-            if (delta >= BLOCK_DIFF_THRESHOLD) {
-                changes += 1;
-                bg_image[i] = 2;
-                pixel_counter++;
-                accumelated_x += i % W;
-                accumelated_y += floor(i / W);
-            } else {
-                if (bg_image[i] > 0) bg_image[i] = bg_image[i] - 1;   
-            }
-        }
-    }
-    
-    if (pixel_counter < 1) {
-      return false;
-    }
-    
-    mean_x = (float) accumelated_x/pixel_counter;
-    mean_y = (float) accumelated_y/pixel_counter;
-    
-    uint8_t* bg_mask_binary = (uint8_t*) heap_caps_malloc(W * H, MALLOC_CAP_SPIRAM);
-    uint8_t* cropped_img = (uint8_t*) heap_caps_malloc(WIDTH*HEIGHT, MALLOC_CAP_SPIRAM);
+  uint16_t accumelated_x = 0;
+  uint16_t accumelated_y = 0;
+  float mean_x = 0;
+  float mean_y = 0;
+  uint16_t diff_sum_x = 0;
+  uint16_t diff_sum_y = 0;
+  float variance_x = 0;
+  float variance_y = 0;
+  uint16_t pixel_counter = 0;
 
-    for (int j = 0; j < W * H; j++) {
-      if (bg_image[j] > 0) {
-        bg_mask_binary[j] = 255;
-        diff_sum_x += abs(j % 32 - mean_x);
-        diff_sum_y += abs(floor(j / 32) - mean_y);
-      } else {
-        bg_mask_binary[j] = 0;
+  for (int y = 0; y < H; y++)
+  {
+    for (int x = 0; x < W; x++)
+    {
+      uint16_t i = x + y * W;
+      float current = current_frame[i];
+      float prev = prev_frame[i];
+      float delta = abs(current - prev) / prev;
+
+      if (delta >= BLOCK_DIFF_THRESHOLD)
+      {
+        changes += 1;
+        bg_image[i] = 2;
+        pixel_counter++;
+        accumelated_x += i % W;
+        accumelated_y += floor(i / W);
+      }
+      else
+      {
+        if (bg_image[i] > 0)
+          bg_image[i] = bg_image[i] - 1;
       }
     }
+  }
 
-    variance_x = ((float) diff_sum_x / pixel_counter) * 2.5;
-    variance_y = ((float) diff_sum_y / pixel_counter) * 2.5;
+  if (pixel_counter < 1)
+  {
+    return false;
+  }
 
-    float half_width = MAXIMUM(variance_x, variance_y) * 1.2;
+  mean_x = (float)accumelated_x / pixel_counter;
+  mean_y = (float)accumelated_y / pixel_counter;
 
-    // Mult by 10 to get pixel in original img
-    mean_x *= 10;
-    mean_y *= 10;
-    half_width *= 10;
-    half_width = MINIMUM(half_width, (float) (HEIGHT / 2));
+  uint8_t *bg_mask_binary = (uint8_t *)heap_caps_malloc(W * H, MALLOC_CAP_SPIRAM);
+  uint8_t *cropped_img = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT, MALLOC_CAP_SPIRAM);
 
-    // Shift crop towards head
-    mean_y -= 0.5 * half_width; 
+  if (cropped_img == NULL)
+  {
+    ESP_LOGI(TAG, "CROPPED IMAGE IS NULL!");
+  }
 
-    float p1_x = (mean_x - half_width);
-    float p1_y = (mean_y - half_width);
-    
-    float p2_x = (mean_x + half_width);
-    float p2_y = (mean_y + half_width);
-
-    // Shift if square is outside image border
-    if (p1_x < 0) {
-      p1_x = 0;
-      p2_x = 2 * half_width;
+  for (int j = 0; j < W * H; j++)
+  {
+    if (bg_image[j] > 0)
+    {
+      bg_mask_binary[j] = 255;
+      diff_sum_x += abs(j % W - mean_x);
+      diff_sum_y += abs(floor(j / W) - mean_y);
     }
-    
-    if (p1_y < 0) {
-       p1_y = 0;
-       p2_y = 2 * half_width;
+    else
+    {
+      bg_mask_binary[j] = 0;
     }
+  }
 
-    if (p2_x > WIDTH) {
-       p2_x = WIDTH;
-       p1_x = WIDTH - 2 * half_width;
+  variance_x = ((float)diff_sum_x / pixel_counter) * 2.5;
+  variance_y = ((float)diff_sum_y / pixel_counter) * 2.5;
+
+  float half_width = MAXIMUM(variance_x, variance_y) * 1.2;
+
+  // Mult by 10 to get pixel in original img
+  mean_x *= 10;
+  mean_y *= 10;
+  half_width *= 10;
+  half_width = MINIMUM(half_width, (float)(HEIGHT / 2));
+
+  // Shift crop towards head
+  mean_y -= 0.5 * half_width;
+
+  float p1_x = (mean_x - half_width);
+  float p1_y = (mean_y - half_width);
+
+  float p2_x = (mean_x + half_width);
+  float p2_y = (mean_y + half_width);
+
+  // Shift if square is outside image border
+  if (p1_x < 0)
+  {
+    p1_x = 0;
+    p2_x = 2 * half_width;
+  }
+
+  if (p1_y < 0)
+  {
+    p1_y = 0;
+    p2_y = 2 * half_width;
+  }
+
+  if (p2_x > WIDTH)
+  {
+    p2_x = WIDTH;
+    p1_x = WIDTH - 2 * half_width;
+  }
+
+  if (p2_y > HEIGHT)
+  {
+    p2_y = HEIGHT;
+    p1_y = HEIGHT - 2 * half_width;
+  }
+
+  int i_p1_x = (int)p1_x;
+  int i_p1_y = (int)p1_y;
+
+  int i_p2_x = (int)p2_x;
+  int i_p2_y = (int)p2_y;
+
+  if (i_p2_x - i_p1_x > i_p2_y - i_p1_y)
+  {
+    i_p2_y++;
+  }
+  else if (i_p2_x - i_p1_x < i_p2_y - i_p1_y)
+  {
+    i_p2_x++;
+  }
+
+  uint32_t counter = 0;
+  for (int i = 0; i < WIDTH * HEIGHT; i++)
+  {
+    uint16_t x = i % WIDTH;
+    uint16_t y = floor(i / WIDTH);
+
+    if (x >= i_p1_x && x < i_p2_x && y >= i_p1_y && y < i_p2_y)
+    {
+      cropped_img[counter] = original_image[i];
+      counter++;
     }
+  }
 
-    if (p2_y > HEIGHT) {
-      p2_y = HEIGHT;
-      p1_y = HEIGHT - 2 * half_width;
-    }
-
-    int i_p1_x = (int) p1_x;
-    int i_p1_y = (int) p1_y;
-    
-    int i_p2_x = (int) p2_x;
-    int i_p2_y = (int) p2_y;
-
-    if (i_p2_x - i_p1_x > i_p2_y - i_p1_y) {
-      i_p2_y++;
-    } else if (i_p2_x - i_p1_x < i_p2_y - i_p1_y) {
-      i_p2_x++;
-    }
-
-    uint16_t counter = 0;
-    for (int i = 0; i < WIDTH * HEIGHT; i++) {
-      uint16_t x = i % WIDTH;
-      uint16_t y = floor(i / WIDTH);
-   
-      if (x >= i_p1_x && x < i_p2_x && y >= i_p1_y && y < i_p2_y) {
-        cropped_img[counter] = original_image[i];
-        counter++;
-      }
-    }
-        
-    image_resize_linear(resized_img, cropped_img, 96, 96, 1, sqrt(counter), sqrt(counter));
-    heap_caps_free(bg_mask_binary);
-    heap_caps_free(cropped_img);
-    ESP_LOGI(TAG, "Changed %d", changes);
-    ESP_LOGI(TAG, "out of %d blocks", blocks);
-    return (1.0 * changes / blocks) > IMAGE_DIFF_THRESHOLD;
+  image_resize_linear(resized_img, cropped_img, 96, 96, 1, sqrt(counter), sqrt(counter));
+  heap_caps_free(bg_mask_binary);
+  heap_caps_free(cropped_img);
+  ESP_LOGI(TAG, "Changed %d", changes);
+  ESP_LOGI(TAG, "out of %d blocks", blocks);
+  return (1.0 * changes / blocks) > IMAGE_DIFF_THRESHOLD;
 }
 
-void update_frame() {
-    for (int y = 0; y < H; y++) {
-        for (int x = 0; x < W; x++) {
-            prev_frame[y][x] = current_frame[y][x];
-        }
+void update_frame()
+{
+  for (int y = 0; y < H; y++)
+  {
+    for (int x = 0; x < W; x++)
+    {
+      uint16_t i = x + y * W;
+      prev_frame[i] = current_frame[i];
     }
+  }
 }
 
-bool downscale(uint8_t* image) {
-    // set all 0s in current frame
-    for (int y = 0; y < H; y++)
-        for (int x = 0; x < W; x++)
-            current_frame[y][x] = 0;
-
-
-    // down-sample image in blocks
-    for (uint32_t i = 0; i < WIDTH * HEIGHT; i++) {
-        const uint16_t x = i % WIDTH;
-        const uint16_t y = floor(i / WIDTH);
-        const uint8_t block_x = floor(x / BLOCK_SIZE);
-        const uint8_t block_y = floor(y / BLOCK_SIZE);
-        const uint8_t pixel = image[i];
-        const uint16_t current = current_frame[block_y][block_x];
-
-        // average pixels in block (accumulate)
-        current_frame[block_y][block_x] += pixel;
+bool downscale(uint8_t *image)
+{
+  // set all 0s in current frame
+  for (int y = 0; y < H; y++)
+    for (int x = 0; x < W; x++) {
+      uint16_t i = x + y * W;
+      current_frame[i] = 0;
     }
 
-    // average pixels in block (rescale)
-    for (int y = 0; y < H; y++)
-        for (int x = 0; x < W; x++)
-            current_frame[y][x] /= BLOCK_SIZE * BLOCK_SIZE;
+   // down-sample image in blocks
+  for (uint32_t i = 0; i < WIDTH * HEIGHT; i++)
+  {
+    const uint16_t x = i % WIDTH;
+    const uint16_t y = floor(i / WIDTH);
+    const uint8_t block_x = floor(x / BLOCK_SIZE);
+    const uint8_t block_y = floor(y / BLOCK_SIZE);
+    uint16_t j = block_x + block_y * W;
+    const uint8_t pixel = image[i];
 
-    return true;
+    // average pixels in block (accumulate)
+    current_frame[j] += pixel;
+  }
+
+  // average pixels in block (rescale)
+  for (int y = 0; y < H; y++)
+    for (int x = 0; x < W; x++) {
+      uint16_t i = x + y * W;
+      current_frame[i] /= BLOCK_SIZE * BLOCK_SIZE;
+    }  
+
+  return true;
 }
 
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
@@ -362,6 +397,32 @@ void setup()
 
   setup_sdcard();
 
+  prev_frame = (uint16_t *) heap_caps_malloc(W * H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+  current_frame = (uint16_t *) heap_caps_malloc(W * H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+  bg_image = (uint8_t *) heap_caps_malloc(W * H * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
+
+  if (prev_frame == NULL)
+  {
+    ESP_LOGI(TAG, "PREV FRAME IS NULL!");
+  }
+
+  if (current_frame == NULL)
+  {
+    ESP_LOGI(TAG, "CURRENT FRAME IS NULL!");
+  }
+
+  if (bg_image == NULL)
+  {
+    ESP_LOGI(TAG, "BG IMAGE IS NULL!");
+  }
+
+  for (int i = 0; i < W * H; i++)
+  {
+    prev_frame[i] = 0;
+    current_frame[i] = 0;
+    bg_image[i] = 0;
+  }
+
   /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
      * examples/protocols/README.md for more information about this function.
@@ -414,7 +475,7 @@ void setup()
 // The name of this function is important for Arduino compatibility.
 void loop()
 {
-  uint8_t* input_image = (uint8_t*) heap_caps_malloc(WIDTH * HEIGHT, MALLOC_CAP_SPIRAM);
+  uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT, MALLOC_CAP_SPIRAM);
 
   // Get image from provider.
   if (kTfLiteOk != GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
@@ -426,26 +487,19 @@ void loop()
 
   downscale(input->data.uint8);
 
-  uint8_t* jpeg = (uint8_t*) heap_caps_malloc(96*96, MALLOC_CAP_SPIRAM);
-  if (jpeg == NULL) {
-    ESP_LOGI(TAG, "Jpeg is NULL");
-  }
-  
-  size_t len;
-  uint8_t* resized_img = (uint8_t*) heap_caps_malloc(96*96, MALLOC_CAP_SPIRAM);
-  if (motion_detect(input->data.uint8, resized_img)) {
-      ESP_LOGI(TAG, "Motion detected");
-      fmt2jpg(resized_img, 96 * 96, 96, 96, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+  uint8_t *resized_img = (uint8_t *)heap_caps_malloc(96 * 96, MALLOC_CAP_SPIRAM);
+  if (motion_detect(input->data.uint8, resized_img))
+  {
+    ESP_LOGI(TAG, "Motion detected");
 
-      if (esp_websocket_client_is_connected(client))
-      {
-        esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
-      }
+    input->data.uint8 = resized_img;
+  } else {
+    image_resize_linear(resized_img, input->data.uint8, 96, 96, 1, WIDTH, HEIGHT);
+    input->data.uint8 = resized_img;
   }
 
   update_frame();
 
-  /*
   // Copy because invoke changes the input. Uses normal malloc since heap_caps_malloc gives NULL
   uint8_t *temp_input = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H, MALLOC_CAP_SPIRAM);
   if (temp_input == NULL)
@@ -465,41 +519,40 @@ void loop()
   uint8_t no_person_score = output->data.uint8[kNotAPersonIndex];
   bool human_detected = RespondToDetection(error_reporter, person_score, no_person_score);
 
+  uint8_t *jpeg;
+  size_t len;
+
+  fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+
+  if (esp_websocket_client_is_connected(client))
+  {
+    esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+  }
+
   if (human_detected)
   {
-    uint8_t *jpeg;
-    size_t len;
-
-    fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
-
-    if (esp_websocket_client_is_connected(client))
-    {
-      esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
-    }
-
-    ESP_LOGI(TAG, "Opening file");
-    char buf[0x100];
-    snprintf(buf, sizeof(buf), "/sdcard/esp/%d.jpg", pictureNumber);
-    FILE *f = fopen(buf, "w");
-    if (f == NULL)
-    {
-      ESP_LOGE(TAG, "Failed to open file for writing");
-      return;
-    }
-    fwrite((const char *)jpeg, 1, len, f);
-    fflush(f);
-    fclose(f);
-    ESP_LOGI(TAG, "File written");
-
-    pref_putUInt("camera_counter", ++pictureNumber);
-
-    heap_caps_free(jpeg);
+    ESP_LOGI(TAG, "********** HUMAN detected ***********");
     
+    // ESP_LOGI(TAG, "Opening file");
+    // char buf[0x100];
+    // snprintf(buf, sizeof(buf), "/sdcard/esp/%d.jpg", pictureNumber);
+    // FILE *f = fopen(buf, "w");
+    // if (f == NULL)
+    // {
+    //   ESP_LOGE(TAG, "Failed to open file for writing");
+    //   return;
+    // }
+    // fwrite((const char *)jpeg, 1, len, f);
+    // fflush(f);
+    // fclose(f);
+    // ESP_LOGI(TAG, "File written");
+
+    // pref_putUInt("camera_counter", ++pictureNumber);
+
   }
-  
-  heap_caps_free(temp_input);
-  */
+
   heap_caps_free(jpeg);
+  heap_caps_free(temp_input);
   heap_caps_free(input_image);
   heap_caps_free(resized_img);
 }

@@ -36,7 +36,7 @@ bool RespondToDetection(tflite::ErrorReporter *error_reporter,
     gpio_reset_pin((gpio_num_t)4);
     gpio_set_direction((gpio_num_t)4, GPIO_MODE_OUTPUT);
     gpio_set_level((gpio_num_t)4, 1);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    //vTaskDelay(1000 / portTICK_PERIOD_MS);
     gpio_set_level((gpio_num_t)4, 0);
 
     human_detected = true;
