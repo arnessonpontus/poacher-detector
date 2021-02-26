@@ -73,6 +73,7 @@ limitations under the License.
 #define WIDTH 320
 #define HEIGHT 240
 #define BLOCK_SIZE 10
+#define BLOCKS ((WIDTH * HEIGHT) / (BLOCK_SIZE * BLOCK_SIZE))
 #define W (WIDTH / BLOCK_SIZE)
 #define H (HEIGHT / BLOCK_SIZE)
 #define BLOCK_DIFF_THRESHOLD 0.25
@@ -81,14 +82,14 @@ limitations under the License.
 #define MAXIMUM(x, y) (((x) > (y)) ? (x) : (y))
 #define MINIMUM(x, y) (((x) < (y)) ? (x) : (y))
 
-#define timeit(label, code)                                                                                            \
-{                                                                                                                      \
-  struct timeval stop, start;                                                                                          \
-  gettimeofday(&start, NULL);                                                                                          \
-  code;                                                                                                                \
-  gettimeofday(&stop, NULL);                                                                                           \
-  ESP_LOGI(TAG,"%s took %f us", label, (float) (stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec); \
-}
+#define timeit(label, code)                                                                                              \
+  {                                                                                                                      \
+    struct timeval stop, start;                                                                                          \
+    gettimeofday(&start, NULL);                                                                                          \
+    code;                                                                                                                \
+    gettimeofday(&stop, NULL);                                                                                           \
+    ESP_LOGI(TAG, "%s took %f us", label, (float)(stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec); \
+  }
 //#define timeit(label, code) code;
 
 const char *nvs_errors[] = {"OTHER", "NOT_INITIALIZED", "NOT_FOUND", "TYPE_MISMATCH", "READ_ONLY", "NOT_ENOUGH_SPACE", "INVALID_NAME", "INVALID_HANDLE", "REMOVE_FAILED", "KEY_TOO_LONG", "PAGE_FULL", "INVALID_STATE", "INVALID_LENGTH"};
@@ -111,81 +112,79 @@ static const char *TAG = "MAIN_FUNCTIONS";
 esp_websocket_client_handle_t client;
 unsigned int pictureNumber = 0;
 uint16_t *prev_frame;
-uint16_t* current_frame;
-uint8_t* bg_image;
+uint16_t *current_frame;
+uint8_t *bg_image;
 
-bool motion_detect(uint8_t *original_image, uint8_t *resized_img)
+void save_to_sdcard(uint8_t *jpeg, size_t len)
 {
-  uint16_t changes = 0;
-  const uint16_t blocks = (WIDTH * HEIGHT) / (BLOCK_SIZE * BLOCK_SIZE);
-
-  uint16_t accumelated_x = 0;
-  uint16_t accumelated_y = 0;
-  float mean_x = 0;
-  float mean_y = 0;
-  uint16_t diff_sum_x = 0;
-  uint16_t diff_sum_y = 0;
-  float variance_x = 0;
-  float variance_y = 0;
-  uint16_t pixel_counter = 0;
-
-  for (int y = 0; y < H; y++)
+  ESP_LOGI(TAG, "Opening file");
+  char buf[0x100];
+  snprintf(buf, sizeof(buf), "/sdcard/esp/%d.jpg", pictureNumber);
+  FILE *f = fopen(buf, "w");
+  if (f == NULL)
   {
-    for (int x = 0; x < W; x++)
-    {
-      uint16_t i = x + y * W;
-      float current = current_frame[i];
-      float prev = prev_frame[i];
-      float delta = abs(current - prev) / prev;
+    ESP_LOGE(TAG, "Failed to open file for writing");
+    return;
+  }
+  fwrite((const char *)jpeg, 1, len, f);
+  fflush(f);
+  fclose(f);
+  ESP_LOGI(TAG, "File written");
 
-      if (delta >= BLOCK_DIFF_THRESHOLD)
-      {
-        changes += 1;
-        bg_image[i] = 2;
-        pixel_counter++;
-        accumelated_x += i % W;
-        accumelated_y += floor(i / W);
-      }
-      else
-      {
-        if (bg_image[i] > 0)
-          bg_image[i] = bg_image[i] - 1;
-      }
+  pref_putUInt("camera_counter", ++pictureNumber);
+}
+
+void crop_image_center(uint8_t *src, uint8_t *dst)
+{
+  int center_x = WIDTH / 2;
+  int center_y = HEIGHT / 2;
+
+  int i_p1_x = center_x - HEIGHT / 2;
+  int i_p1_y = 0;
+
+  int i_p2_x = center_x + HEIGHT / 2;
+  int i_p2_y = HEIGHT;
+
+  int counter = 0;
+
+  for (int i = 0; i < WIDTH * HEIGHT; i++)
+  {
+    uint16_t x = i % WIDTH;
+    uint16_t y = floor(i / WIDTH);
+
+    if (x >= i_p1_x && x < i_p2_x && y >= i_p1_y && y < i_p2_y)
+    {
+      dst[counter] = src[i];
+      counter++;
     }
   }
+}
 
-  if (pixel_counter < 1)
-  {
-    return false;
-  }
+void crop_image(uint8_t *src, uint8_t *dst, uint16_t changes, uint32_t &cropped_len, uint16_t &accumelated_x, uint16_t &accumelated_y)
+{
+  uint16_t diff_sum_x = 0;
+  uint16_t diff_sum_y = 0;
+  float mean_x = (float)accumelated_x / changes;
+  float mean_y = (float)accumelated_y / changes;
 
-  mean_x = (float)accumelated_x / pixel_counter;
-  mean_y = (float)accumelated_y / pixel_counter;
-
-  uint8_t *bg_mask_binary = (uint8_t *)heap_caps_malloc(W * H, MALLOC_CAP_SPIRAM);
-  uint8_t *cropped_img = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT, MALLOC_CAP_SPIRAM);
-
-  if (cropped_img == NULL)
-  {
-    ESP_LOGI(TAG, "CROPPED IMAGE IS NULL!");
-  }
+  //uint8_t *bg_mask_binary = (uint8_t *)heap_caps_malloc(W * H, MALLOC_CAP_SPIRAM);
 
   for (int j = 0; j < W * H; j++)
   {
     if (bg_image[j] > 0)
     {
-      bg_mask_binary[j] = 255;
+      //bg_mask_binary[j] = 255;
       diff_sum_x += abs(j % W - mean_x);
       diff_sum_y += abs(floor(j / W) - mean_y);
     }
     else
     {
-      bg_mask_binary[j] = 0;
+      //bg_mask_binary[j] = 0;
     }
   }
 
-  variance_x = ((float)diff_sum_x / pixel_counter) * 2.5;
-  variance_y = ((float)diff_sum_y / pixel_counter) * 2.5;
+  float variance_x = ((float)diff_sum_x / changes) * 2.5;
+  float variance_y = ((float)diff_sum_y / changes) * 2.5;
 
   float half_width = MAXIMUM(variance_x, variance_y) * 1.2;
 
@@ -244,7 +243,6 @@ bool motion_detect(uint8_t *original_image, uint8_t *resized_img)
     i_p2_x++;
   }
 
-  uint32_t counter = 0;
   for (int i = 0; i < WIDTH * HEIGHT; i++)
   {
     uint16_t x = i % WIDTH;
@@ -252,19 +250,47 @@ bool motion_detect(uint8_t *original_image, uint8_t *resized_img)
 
     if (x >= i_p1_x && x < i_p2_x && y >= i_p1_y && y < i_p2_y)
     {
-      cropped_img[counter] = original_image[i];
-      counter++;
+      dst[cropped_len] = src[i];
+      cropped_len++;
     }
   }
 
-  //int res = stbir_resize_uint8(cropped_img, sqrt(counter), sqrt(counter), 0, resized_img, 96, 96, 0, 1);
-  //ESP_LOGI(TAG, "RES: %d", res);
-  image_resize_linear(resized_img, cropped_img, 96, 96, 1, sqrt(counter), sqrt(counter));
-  heap_caps_free(bg_mask_binary);
-  heap_caps_free(cropped_img);
+  //heap_caps_free(bg_mask_binary);
+}
+
+void bg_subtraction(uint16_t &changes, uint16_t &accumelated_x, uint16_t &accumelated_y)
+{
+  changes = 0;
+
+  accumelated_x = 0;
+  accumelated_y = 0;
+
+  for (int y = 0; y < H; y++)
+  {
+    for (int x = 0; x < W; x++)
+    {
+      uint16_t i = x + y * W;
+      float current = current_frame[i];
+      float prev = prev_frame[i];
+      float delta = abs(current - prev) / prev;
+
+      if (delta >= BLOCK_DIFF_THRESHOLD)
+      {
+        changes += 1;
+        bg_image[i] = 2;
+        accumelated_x += i % W;
+        accumelated_y += floor(i / W);
+      }
+      else
+      {
+        if (bg_image[i] > 0)
+          bg_image[i] = bg_image[i] - 1;
+      }
+    }
+  }
+
   ESP_LOGI(TAG, "Changed %d", changes);
-  ESP_LOGI(TAG, "out of %d blocks", blocks);
-  return (1.0 * changes / blocks) > IMAGE_DIFF_THRESHOLD;
+  ESP_LOGI(TAG, "out of %d blocks", BLOCKS);
 }
 
 void update_frame()
@@ -283,12 +309,13 @@ bool downscale(uint8_t *image)
 {
   // set all 0s in current frame
   for (int y = 0; y < H; y++)
-    for (int x = 0; x < W; x++) {
+    for (int x = 0; x < W; x++)
+    {
       uint16_t i = x + y * W;
       current_frame[i] = 0;
     }
 
-   // down-sample image in blocks
+  // down-sample image in blocks
   for (uint32_t i = 0; i < WIDTH * HEIGHT; i++)
   {
     const uint16_t x = i % WIDTH;
@@ -304,10 +331,11 @@ bool downscale(uint8_t *image)
 
   // average pixels in block (rescale)
   for (int y = 0; y < H; y++)
-    for (int x = 0; x < W; x++) {
+    for (int x = 0; x < W; x++)
+    {
       uint16_t i = x + y * W;
       current_frame[i] /= BLOCK_SIZE * BLOCK_SIZE;
-    }  
+    }
 
   return true;
 }
@@ -412,9 +440,9 @@ void setup()
 
   setup_sdcard();
 
-  prev_frame = (uint16_t *) heap_caps_malloc(W * H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-  current_frame = (uint16_t *) heap_caps_malloc(W * H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-  bg_image = (uint8_t *) heap_caps_malloc(W * H * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
+  prev_frame = (uint16_t *)heap_caps_malloc(W * H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+  current_frame = (uint16_t *)heap_caps_malloc(W * H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+  bg_image = (uint8_t *)heap_caps_malloc(W * H * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
 
   if (prev_frame == NULL)
   {
@@ -500,20 +528,42 @@ void loop()
   }
   input->data.uint8 = input_image;
 
+  // Update downsampled current_frame
   downscale(input->data.uint8);
 
   uint8_t *resized_img = (uint8_t *)heap_caps_malloc(96 * 96, MALLOC_CAP_SPIRAM);
-  if (motion_detect(input->data.uint8, resized_img))
+  uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT, MALLOC_CAP_SPIRAM);
+
+  uint16_t changes;
+  uint16_t accumelated_x;
+  uint16_t accumelated_y;
+
+  bg_subtraction(changes, accumelated_x, accumelated_y);
+
+  bool motion_detected = (1.0 * changes / BLOCKS) > IMAGE_DIFF_THRESHOLD;
+
+  if (motion_detected)
   {
     ESP_LOGI(TAG, "Motion detected");
 
-    input->data.uint8 = resized_img;
-  } else {
+    // Allocate enough for maximum crop (Height x Height)
+    uint32_t cropped_len = 0;
+    crop_image(input->data.uint8, cropped_image, changes, cropped_len, accumelated_x, accumelated_y);
+
+    image_resize_linear(resized_img, cropped_image, 96, 96, 1, sqrt(cropped_len), sqrt(cropped_len));
+  }
+  else
+  {
     //stbir_resize_uint8(input->data.uint8, WIDTH, HEIGHT, 0, resized_img, 96, 96, 0, 1);
-    image_resize_linear(resized_img, input->data.uint8, 96, 96, 1, WIDTH, HEIGHT);
-    input->data.uint8 = resized_img;
+    crop_image_center(input->data.uint8, cropped_image);
+
+    image_resize_linear(resized_img, cropped_image, 96, 96, 1, HEIGHT, HEIGHT);
   }
 
+  // Set tensorflow input
+  input->data.uint8 = resized_img;
+
+  // Set prev_frame values to current_frame values
   update_frame();
 
   // Copy because invoke changes the input. Uses normal malloc since heap_caps_malloc gives NULL
@@ -540,7 +590,6 @@ void loop()
 
   fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
-  //timeit("delay", vTaskDelay(1000 / portTICK_PERIOD_MS));
   if (esp_websocket_client_is_connected(client))
   {
     esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
@@ -549,30 +598,12 @@ void loop()
   if (human_detected)
   {
     ESP_LOGI(TAG, "********** HUMAN detected ***********");
-    // uint8_t *jpeg;
-    // size_t len;
-    // fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
-    // ESP_LOGI(TAG, "Opening file");
-    // char buf[0x100];
-    // snprintf(buf, sizeof(buf), "/sdcard/esp/%d.jpg", pictureNumber);
-    // FILE *f = fopen(buf, "w");
-    // if (f == NULL)
-    // {
-    //   ESP_LOGE(TAG, "Failed to open file for writing");
-    //   return;
-    // }
-    // fwrite((const char *)jpeg, 1, len, f);
-    // fflush(f);
-    // fclose(f);
-    // ESP_LOGI(TAG, "File written");
-    //heap_caps_free(jpeg);
-
-    // pref_putUInt("camera_counter", ++pictureNumber);
-
+    timeit("Save to sd card", save_to_sdcard(jpeg, len));
   }
 
   heap_caps_free(jpeg);
   heap_caps_free(temp_input);
   heap_caps_free(input_image);
   heap_caps_free(resized_img);
+  heap_caps_free(cropped_image);
 }
