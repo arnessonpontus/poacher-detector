@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#include <sys/time.h>
 #include "main_functions.h"
 #include "image_util.h"
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -80,6 +80,16 @@ limitations under the License.
 
 #define MAXIMUM(x, y) (((x) > (y)) ? (x) : (y))
 #define MINIMUM(x, y) (((x) < (y)) ? (x) : (y))
+
+#define timeit(label, code)                                                                                            \
+{                                                                                                                      \
+  struct timeval stop, start;                                                                                          \
+  gettimeofday(&start, NULL);                                                                                          \
+  code;                                                                                                                \
+  gettimeofday(&stop, NULL);                                                                                           \
+  ESP_LOGI(TAG,"%s took %f us", label, (float) (stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec); \
+}
+//#define timeit(label, code) code;
 
 const char *nvs_errors[] = {"OTHER", "NOT_INITIALIZED", "NOT_FOUND", "TYPE_MISMATCH", "READ_ONLY", "NOT_ENOUGH_SPACE", "INVALID_NAME", "INVALID_HANDLE", "REMOVE_FAILED", "KEY_TOO_LONG", "PAGE_FULL", "INVALID_STATE", "INVALID_LENGTH"};
 #define nvs_error(e) (((e) > ESP_ERR_NVS_BASE) ? nvs_errors[(e) & ~(ESP_ERR_NVS_BASE)] : nvs_errors[0])
@@ -530,6 +540,7 @@ void loop()
 
   fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
+  //timeit("delay", vTaskDelay(1000 / portTICK_PERIOD_MS));
   if (esp_websocket_client_is_connected(client))
   {
     esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
@@ -538,7 +549,9 @@ void loop()
   if (human_detected)
   {
     ESP_LOGI(TAG, "********** HUMAN detected ***********");
-    
+    // uint8_t *jpeg;
+    // size_t len;
+    // fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
     // ESP_LOGI(TAG, "Opening file");
     // char buf[0x100];
     // snprintf(buf, sizeof(buf), "/sdcard/esp/%d.jpg", pictureNumber);
@@ -552,6 +565,7 @@ void loop()
     // fflush(f);
     // fclose(f);
     // ESP_LOGI(TAG, "File written");
+    //heap_caps_free(jpeg);
 
     // pref_putUInt("camera_counter", ++pictureNumber);
 
