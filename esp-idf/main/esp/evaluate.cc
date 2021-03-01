@@ -26,7 +26,7 @@ limitations under the License.
 #include "../detection_responder.h"
 #include "../constants.h"
 
-static const char *TAG = "MAIN";
+static const char *TAG = "EVAL";
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace
@@ -144,12 +144,8 @@ void loop()
 {
   uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT, MALLOC_CAP_SPIRAM);
 
-  // Get image from provider.
-  if (kTfLiteOk != GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
-                            input_image))
-  {
-    TF_LITE_REPORT_ERROR(error_reporter, "Image capture failed.");
-  }
+  get_stored_image(input_image);
+
   input->data.uint8 = input_image;
 
   // Update downsampled current_frame
@@ -222,7 +218,6 @@ void loop()
   if (human_detected)
   {
     ESP_LOGI(TAG, "********** HUMAN detected ***********");
-    //timeit("Save to sd card", save_to_sdcard(jpeg, len));
   }
 
   heap_caps_free(jpeg);
@@ -232,13 +227,12 @@ void loop()
   heap_caps_free(cropped_image);
 }
 
-
 int tf_main(int argc, char *argv[])
 {
   setup();
   while (true)
   {
-    timeit("Loop took: ", loop());
+    loop();
   }
 }
 
