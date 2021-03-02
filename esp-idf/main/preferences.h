@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "esp_log.h"
 
 bool pref_begin(const char *name, bool readOnly, const char *partition_label = NULL);
 size_t pref_putUInt(const char *key, uint32_t value);

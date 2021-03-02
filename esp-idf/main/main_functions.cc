@@ -25,11 +25,9 @@ limitations under the License.
 #define MAXIMUM(x, y) (((x) > (y)) ? (x) : (y))
 #define MINIMUM(x, y) (((x) < (y)) ? (x) : (y))
 
-const char *nvs_errors[] = {"OTHER", "NOT_INITIALIZED", "NOT_FOUND", "TYPE_MISMATCH", "READ_ONLY", "NOT_ENOUGH_SPACE", "INVALID_NAME", "INVALID_HANDLE", "REMOVE_FAILED", "KEY_TOO_LONG", "PAGE_FULL", "INVALID_STATE", "INVALID_LENGTH"};
-#define nvs_error(e) (((e) > ESP_ERR_NVS_BASE) ? nvs_errors[(e) & ~(ESP_ERR_NVS_BASE)] : nvs_errors[0])
-
 static const char *TAG = "MAIN_FUNCTIONS";
-unsigned int pictureNumber = 0;
+uint32_t jpg_counter = 0;
+uint32_t bin_counter = 0;
 uint16_t *prev_frame;
 uint16_t *current_frame;
 uint8_t *bg_image;
@@ -288,29 +286,45 @@ void setup_sdcard()
   sdmmc_card_print_info(stdout, card);
 }
 
-void save_to_sdcard(uint8_t *image, size_t len)
+void save_to_sdcard(uint8_t *image, size_t len, char ext[])
 {
+  uint32_t* counter = NULL;
+
+  if (strcmp(ext, "jpg") == 0) {
+    counter = &jpg_counter;
+  } else if (strcmp(ext, "bin") == 0) {
+    counter = &bin_counter;
+  }
+
+  if (counter == NULL) {
+    ESP_LOGI(TAG, "Invalid extension");
+    return;
+  }
+
   ESP_LOGI(TAG, "Opening file");
   char buf[0x100];
-  snprintf(buf, sizeof(buf), "/sdcard/esp/%d.jpg", pictureNumber);
+  snprintf(buf, sizeof(buf), "/sdcard/esp/%d.%s", *counter, ext);
   FILE *f = fopen(buf, "w");
   if (f == NULL)
   {
     ESP_LOGE(TAG, "Failed to open file for writing");
     return;
   }
-  ESP_LOGI(TAG, "len: %d", len);
   fwrite(image, 1, len, f);
   fflush(f);
   fclose(f);
   ESP_LOGI(TAG, "File written");
 
-  pref_putUInt("camera_counter", ++pictureNumber);
+  if (strcmp(ext, "jpg") == 0) {
+    pref_putUInt("jpg_counter", ++(*counter));
+  } else if (strcmp(ext, "bin") == 0) {
+    pref_putUInt("bin_counter", ++(*counter));
+  }
 }
 
-void get_stored_image(uint8_t* input_image) {
+void get_stored_image(uint8_t* input_image, uint16_t image_number) {
   char buf[0x100];
-  snprintf(buf, sizeof(buf), "/sdcard/esp/5.JPG");
+  snprintf(buf, sizeof(buf), "/sdcard/esp/%d.bin", image_number);
   FILE *f = fopen(buf, "r");
   if (f == NULL)
   {
@@ -325,12 +339,18 @@ void get_stored_image(uint8_t* input_image) {
 }
 
 void setup_mf() {
+  ESP_ERROR_CHECK(nvs_flash_init());
+
   prev_frame = (uint16_t *)heap_caps_malloc(W * H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
   current_frame = (uint16_t *)heap_caps_malloc(W * H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
   bg_image = (uint8_t *)heap_caps_malloc(W * H * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
 
-  pref_begin("poach_det", false);
-  pictureNumber = pref_getUInt("camera_counter", 0);
+  pref_begin("apan", false);
+  jpg_counter = pref_getUInt("jpg_counter", 0);
+  bin_counter = pref_getUInt("bin_counter", 0);
+
+  ESP_LOGI(TAG, "jpg_counter %d", jpg_counter);
+  ESP_LOGI(TAG, "bin_counter %d", bin_counter);
 
   for (int i = 0; i < W * H; i++)
   {
