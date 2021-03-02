@@ -28,6 +28,15 @@ limitations under the License.
 
 static const char *TAG = "EVAL";
 
+uint16_t num_images = 17;
+uint16_t image_number = 0;
+uint16_t image_number_offset = 31;
+uint16_t tp = 0;
+uint16_t tn = 0;
+uint16_t fp = 0;
+uint16_t fn = 0;
+uint8_t ground_truth[] = {0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1};
+
 // Globals, used for compatibility with Arduino-style sketches.
 namespace
 {
@@ -85,7 +94,6 @@ void setup()
   esp_log_level_set("TRANSPORT_WS", ESP_LOG_DEBUG);
   esp_log_level_set("TRANS_TCP", ESP_LOG_DEBUG);
 
-  ESP_ERROR_CHECK(nvs_flash_init());
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
@@ -142,9 +150,20 @@ void setup()
 
 void loop()
 {
+  if (image_number == num_images) {
+    ESP_LOGI(TAG, "True Positives: %d", tp);
+    ESP_LOGI(TAG, "True Negatives: %d", tn);
+    ESP_LOGI(TAG, "False Positives: %d", fp);
+    ESP_LOGI(TAG, "False Negatives: %d", fn);
+    image_number++;
+    return;
+  } else if (image_number > num_images) {
+    return;
+  }
+
   uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT, MALLOC_CAP_SPIRAM);
 
-  get_stored_image(input_image);
+  get_stored_image(input_image, image_number + image_number_offset);
 
   input->data.uint8 = input_image;
 
@@ -218,7 +237,14 @@ void loop()
   if (human_detected)
   {
     ESP_LOGI(TAG, "********** HUMAN detected ***********");
+    if (ground_truth[image_number] == 1) tp++;
+    else fp++;
+  } else {
+    if (ground_truth[image_number] == 1) fn++;
+    else tn++;
   }
+
+  image_number++;
 
   heap_caps_free(jpeg);
   heap_caps_free(temp_input);

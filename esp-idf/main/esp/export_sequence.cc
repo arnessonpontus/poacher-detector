@@ -88,10 +88,21 @@ void loop()
 {
   camera_fb_t *frame_buffer = esp_camera_fb_get();
 
-  save_to_sdcard(frame_buffer->buf, frame_buffer->len);
+  char ext[] = "bin";
+  save_to_sdcard(frame_buffer->buf, frame_buffer->len, ext);
+
+  uint8_t *jpeg;
+  size_t len;
+
+  fmt2jpg(frame_buffer->buf, WIDTH * HEIGHT, WIDTH, HEIGHT, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+
+  char ext2[] = "jpg";
+  save_to_sdcard(jpeg, len, ext2);
+
+  heap_caps_free(jpeg);
 
   esp_camera_fb_return(frame_buffer);
-  vTaskDelay(1300 / portTICK_PERIOD_MS);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
 
 

@@ -85,8 +85,8 @@ void bg_subtraction(uint16_t &changes, uint16_t &accumelated_x, uint16_t &accume
 void update_frame();
 bool downscale(uint8_t *image);
 void setup_sdcard();
-void save_to_sdcard(uint8_t *image, size_t len);
-void get_stored_image(uint8_t* input_image);
+void save_to_sdcard(uint8_t *image, size_t len, char ext[]);
+void get_stored_image(uint8_t* input_image, uint16_t image_number);
 void setup_mf();
 
 #ifdef __cplusplus
