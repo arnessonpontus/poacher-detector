@@ -26,8 +26,6 @@ limitations under the License.
 #define MINIMUM(x, y) (((x) < (y)) ? (x) : (y))
 
 static const char *TAG = "MAIN_FUNCTIONS";
-uint32_t jpg_counter = 0;
-uint32_t bin_counter = 0;
 uint16_t *prev_frame;
 uint16_t *current_frame;
 uint8_t *bg_image;
@@ -80,10 +78,10 @@ void crop_image(uint8_t *src, uint8_t *dst, uint16_t changes, uint32_t &cropped_
     }
   }
 
-  float variance_x = ((float)diff_sum_x / changes) * 2.5;
-  float variance_y = ((float)diff_sum_y / changes) * 2.5;
+  float variance_x = ((float)diff_sum_x / changes);
+  float variance_y = ((float)diff_sum_y / changes);
 
-  float half_width = MAXIMUM(variance_x, variance_y) * 1.2;
+  float half_width = MAXIMUM(variance_x, variance_y) * CROP_FACTOR;
 
   // Mult by 10 to get pixel in original img
   mean_x *= 10;
@@ -286,25 +284,11 @@ void setup_sdcard()
   sdmmc_card_print_info(stdout, card);
 }
 
-void save_to_sdcard(uint8_t *image, size_t len, char ext[])
+void save_to_sdcard(uint8_t *image, size_t len, char filename[])
 {
-  uint32_t* counter = NULL;
-
-  if (strcmp(ext, "jpg") == 0) {
-    counter = &jpg_counter;
-  } else if (strcmp(ext, "bin") == 0) {
-    counter = &bin_counter;
-  }
-
-  if (counter == NULL) {
-    ESP_LOGI(TAG, "Invalid extension");
-    return;
-  }
-
   ESP_LOGI(TAG, "Opening file");
-  char buf[0x100];
-  snprintf(buf, sizeof(buf), "/sdcard/esp/%d.%s", *counter, ext);
-  FILE *f = fopen(buf, "w");
+
+  FILE *f = fopen(filename, "w");
   if (f == NULL)
   {
     ESP_LOGE(TAG, "Failed to open file for writing");
@@ -313,18 +297,12 @@ void save_to_sdcard(uint8_t *image, size_t len, char ext[])
   fwrite(image, 1, len, f);
   fflush(f);
   fclose(f);
-  ESP_LOGI(TAG, "File written");
-
-  if (strcmp(ext, "jpg") == 0) {
-    pref_putUInt("jpg_counter", ++(*counter));
-  } else if (strcmp(ext, "bin") == 0) {
-    pref_putUInt("bin_counter", ++(*counter));
-  }
+  ESP_LOGI(TAG, "File written to %s", filename);
 }
 
 void get_stored_image(uint8_t* input_image, uint16_t image_number) {
   char buf[0x100];
-  snprintf(buf, sizeof(buf), "/sdcard/esp/%d.bin", image_number);
+  snprintf(buf, sizeof(buf), "/sdcard/esp/%04d.bin", image_number);
   FILE *f = fopen(buf, "r");
   if (f == NULL)
   {
@@ -344,13 +322,6 @@ void setup_mf() {
   prev_frame = (uint16_t *)heap_caps_malloc(W * H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
   current_frame = (uint16_t *)heap_caps_malloc(W * H * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
   bg_image = (uint8_t *)heap_caps_malloc(W * H * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
-
-  pref_begin("apan", false);
-  jpg_counter = pref_getUInt("jpg_counter", 0);
-  bin_counter = pref_getUInt("bin_counter", 0);
-
-  ESP_LOGI(TAG, "jpg_counter %d", jpg_counter);
-  ESP_LOGI(TAG, "bin_counter %d", bin_counter);
 
   for (int i = 0; i < W * H; i++)
   {

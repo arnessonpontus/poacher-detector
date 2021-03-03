@@ -46,9 +46,9 @@ while(True):
 
         cropped_img = crop(gray)
 
-        cropped_img.save("output_images/" + str(filename_counter) + ".jpg")
+        cropped_img.save('output_images/{0:04}'.format(filename_counter) + ".jpg")
 
-        f = open("output_images/" + str(filename_counter) + ".bin", "wb")
+        f = open('output_images/{0:04}'.format(filename_counter) + ".bin", "wb")
         f.write(cropped_img.tobytes())
 
         filename_counter+=1

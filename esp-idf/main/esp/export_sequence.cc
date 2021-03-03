@@ -36,6 +36,8 @@ limitations under the License.
 
 static const char *TAG = "EXPORT_SEQUENCE";
 
+uint32_t filename_number = 0;
+
 bool setup_camera(framesize_t frameSize) {
     camera_config_t config;
 
@@ -88,16 +90,20 @@ void loop()
 {
   camera_fb_t *frame_buffer = esp_camera_fb_get();
 
-  char ext[] = "bin";
-  save_to_sdcard(frame_buffer->buf, frame_buffer->len, ext);
+  char filename[0x100];
+
+  snprintf(filename, sizeof(filename), "/sdcard/esp/%04d.bin", filename_number);
+  save_to_sdcard(frame_buffer->buf, frame_buffer->len, filename);
 
   uint8_t *jpeg;
   size_t len;
 
   fmt2jpg(frame_buffer->buf, WIDTH * HEIGHT, WIDTH, HEIGHT, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
-  char ext2[] = "jpg";
-  save_to_sdcard(jpeg, len, ext2);
+  snprintf(filename, sizeof(filename), "/sdcard/esp/%04d.jpg", filename_number);
+  save_to_sdcard(jpeg, len, filename);
+
+  filename_number++;
 
   heap_caps_free(jpeg);
 

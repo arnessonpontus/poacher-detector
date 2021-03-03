@@ -28,14 +28,13 @@ limitations under the License.
 
 static const char *TAG = "EVAL";
 
-uint16_t num_images = 17;
+uint16_t num_images = 10;
 uint16_t image_number = 0;
-uint16_t image_number_offset = 31;
 uint16_t tp = 0;
 uint16_t tn = 0;
 uint16_t fp = 0;
 uint16_t fn = 0;
-uint8_t ground_truth[] = {0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1};
+uint8_t ground_truth[] = {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0};
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace
@@ -163,7 +162,7 @@ void loop()
 
   uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT, MALLOC_CAP_SPIRAM);
 
-  get_stored_image(input_image, image_number + image_number_offset);
+  get_stored_image(input_image, image_number);
 
   input->data.uint8 = input_image;
 

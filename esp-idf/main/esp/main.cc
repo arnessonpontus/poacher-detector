@@ -29,6 +29,8 @@ limitations under the License.
 
 static const char *TAG = "MAIN";
 
+uint32_t filename_number = 0;
+
 // Globals, used for compatibility with Arduino-style sketches.
 namespace
 {
@@ -99,6 +101,11 @@ void setup()
   ESP_ERROR_CHECK(example_connect());
 
   websocket_app_start();
+
+  pref_begin("poach_det", false);
+  filename_number = pref_getUInt("filename_number", 0);
+
+  ESP_LOGI(TAG, "filename_number %d", filename_number);
 
   static tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
@@ -223,7 +230,11 @@ void loop()
     {
       esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
     }
-    //timeit("Save to sd card", save_to_sdcard(jpeg, len));
+
+    char filename[0x100];
+    snprintf(filename, sizeof(filename), "/sdcard/esp/%04d.jpg", filename_number);
+    timeit("Save to sd card", save_to_sdcard(jpeg, len, filename));
+    pref_putUInt("filename_number", ++filename_number);
 
     heap_caps_free(jpeg);
   }
