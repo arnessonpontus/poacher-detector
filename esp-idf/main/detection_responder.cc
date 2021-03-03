@@ -21,6 +21,7 @@ limitations under the License.
 #include "esp_log.h"
 #include "esp_websocket_client.h"
 #include "esp_event.h"
+#include "constants.h"
 
 // This dummy implementation writes person and no person scores to the error
 // console. Real applications will want to take some custom action instead, and
@@ -31,7 +32,7 @@ bool RespondToDetection(tflite::ErrorReporter *error_reporter,
 
   bool human_detected = false;
 
-  if (person_score > no_person_score && person_score > 200)
+  if (person_score > no_person_score && person_score > PERSON_THRESH)
   {
     gpio_reset_pin((gpio_num_t)4);
     gpio_set_direction((gpio_num_t)4, GPIO_MODE_OUTPUT);

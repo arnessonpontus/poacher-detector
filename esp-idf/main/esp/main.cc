@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
+#include "../image_provider.h"
 #include "../detection_responder.h"
 #include "../constants.h"
 
@@ -209,23 +210,24 @@ void loop()
   uint8_t no_person_score = output->data.uint8[kNotAPersonIndex];
   bool human_detected = RespondToDetection(error_reporter, person_score, no_person_score);
 
-  uint8_t *jpeg;
-  size_t len;
-
-  fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
-
-  if (esp_websocket_client_is_connected(client))
-  {
-    esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
-  }
-
   if (human_detected)
   {
     ESP_LOGI(TAG, "********** HUMAN detected ***********");
+
+    uint8_t *jpeg;
+    size_t len;
+
+    fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+
+    if (esp_websocket_client_is_connected(client))
+    {
+      esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+    }
     //timeit("Save to sd card", save_to_sdcard(jpeg, len));
+
+    heap_caps_free(jpeg);
   }
 
-  heap_caps_free(jpeg);
   heap_caps_free(temp_input);
   heap_caps_free(input_image);
   heap_caps_free(resized_img);

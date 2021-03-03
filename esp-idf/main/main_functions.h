@@ -20,7 +20,6 @@ limitations under the License.
 // #define STB_IMAGE_RESIZE_IMPLEMENTATION
 // #include "stb_image_resize.h"
 // #define STBIR_ASSERT()
-#include "image_provider.h"
 
 #include <stdio.h>
 #include "esp_wifi.h"

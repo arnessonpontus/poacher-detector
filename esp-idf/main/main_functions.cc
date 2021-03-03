@@ -174,7 +174,7 @@ void bg_subtraction(uint16_t &changes, uint16_t &accumelated_x, uint16_t &accume
       if (delta >= BLOCK_DIFF_THRESHOLD)
       {
         changes += 1;
-        bg_image[i] = 2;
+        bg_image[i] = DECREMENT_START;
         accumelated_x += i % W;
         accumelated_y += floor(i / W);
       }
