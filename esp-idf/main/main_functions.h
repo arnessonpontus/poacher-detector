@@ -17,9 +17,6 @@ limitations under the License.
 
 #include <sys/time.h>
 #include "image_util.h"
-// #define STB_IMAGE_RESIZE_IMPLEMENTATION
-// #include "stb_image_resize.h"
-// #define STBIR_ASSERT()
 
 #include <stdio.h>
 #include "esp_wifi.h"

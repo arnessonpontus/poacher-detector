@@ -231,10 +231,10 @@ void loop()
       esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
     }
 
-    char filename[0x100];
-    snprintf(filename, sizeof(filename), "/sdcard/esp/%04d.jpg", filename_number);
-    timeit("Save to sd card", save_to_sdcard(jpeg, len, filename));
-    pref_putUInt("filename_number", ++filename_number);
+    // char filename[0x100];
+    // snprintf(filename, sizeof(filename), "/sdcard/esp/%04d.jpg", filename_number);
+    // timeit("Save to sd card", save_to_sdcard(jpeg, len, filename));
+    // pref_putUInt("filename_number", ++filename_number);
 
     heap_caps_free(jpeg);
   }
@@ -244,7 +244,6 @@ void loop()
   heap_caps_free(resized_img);
   heap_caps_free(cropped_image);
 }
-
 
 int tf_main(int argc, char *argv[])
 {

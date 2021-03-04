@@ -26,15 +26,19 @@ limitations under the License.
 #include "../detection_responder.h"
 #include "../constants.h"
 
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include "../stb_image_resize.h"
+
 static const char *TAG = "EVAL";
 
-uint16_t num_images = 10;
+uint16_t num_images = 16;
 uint16_t image_number = 0;
+uint16_t offset_number = 0;
 uint16_t tp = 0;
 uint16_t tn = 0;
 uint16_t fp = 0;
 uint16_t fn = 0;
-uint8_t ground_truth[] = {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0};
+uint8_t ground_truth[] = {0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace
@@ -162,7 +166,7 @@ void loop()
 
   uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT, MALLOC_CAP_SPIRAM);
 
-  get_stored_image(input_image, image_number);
+  get_stored_image(input_image, image_number + offset_number);
 
   input->data.uint8 = input_image;
 
@@ -188,13 +192,14 @@ void loop()
     uint32_t cropped_len = 0;
     crop_image(input->data.uint8, cropped_image, changes, cropped_len, accumelated_x, accumelated_y);
 
+    //stbir_resize_uint8(cropped_image, sqrt(cropped_len), sqrt(cropped_len), 0, resized_img, 96, 96, 0, 1);
     image_resize_linear(resized_img, cropped_image, 96, 96, 1, sqrt(cropped_len), sqrt(cropped_len));
   }
   else
   {
-    //stbir_resize_uint8(input->data.uint8, WIDTH, HEIGHT, 0, resized_img, 96, 96, 0, 1);
     crop_image_center(input->data.uint8, cropped_image);
 
+    //stbir_resize_uint8(cropped_image, HEIGHT, HEIGHT, 0, resized_img, 96, 96, 0, 1);
     image_resize_linear(resized_img, cropped_image, 96, 96, 1, HEIGHT, HEIGHT);
   }
 
