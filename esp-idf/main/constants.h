@@ -5,6 +5,7 @@
 #define MODEL_INPUT_H 96
 #define WIDTH 320
 #define HEIGHT 240
+#define NUM_CHANNELS 1
 #define BLOCK_SIZE 10
 #define BLOCKS ((WIDTH * HEIGHT) / (BLOCK_SIZE * BLOCK_SIZE))
 #define W (WIDTH / BLOCK_SIZE)
@@ -14,6 +15,6 @@
 #define DECREMENT_START 2
 #define CROP_FACTOR 2.0
 
-#define PERSON_THRESH 220
+#define PERSON_THRESH 180
 
 #endif // CONSTANTS_H

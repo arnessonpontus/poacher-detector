@@ -31,14 +31,14 @@ limitations under the License.
 
 static const char *TAG = "EVAL";
 
-uint16_t num_images = 16;
+uint16_t num_images = 23;
 uint16_t image_number = 0;
-uint16_t offset_number = 0;
+uint16_t offset_number = 1;
 uint16_t tp = 0;
 uint16_t tn = 0;
 uint16_t fp = 0;
 uint16_t fn = 0;
-uint8_t ground_truth[] = {0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+uint8_t ground_truth[] = {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1};
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace
@@ -49,8 +49,8 @@ namespace
   TfLiteTensor *input = nullptr;
 
   // An area of memory to use for input, output, and intermediate arrays.
-  constexpr int kTensorArenaSize = 93 * 1024;
-  static uint8_t tensor_arena[kTensorArenaSize];
+  constexpr int kTensorArenaSize = 93 * 1024 * 4;
+  static uint8_t* tensor_arena = (uint8_t*) heap_caps_malloc(kTensorArenaSize, MALLOC_CAP_SPIRAM);
 } // namespace
 
 esp_websocket_client_handle_t client;
@@ -125,7 +125,7 @@ void setup()
     return;
   }
 
-  static tflite::MicroMutableOpResolver<3> micro_op_resolver;
+  static tflite::MicroMutableOpResolver<5> micro_op_resolver;
   micro_op_resolver.AddBuiltin(
       tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
       tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
@@ -133,6 +133,10 @@ void setup()
                                tflite::ops::micro::Register_CONV_2D());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_AVERAGE_POOL_2D,
                                tflite::ops::micro::Register_AVERAGE_POOL_2D());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_RESHAPE,
+                               tflite::ops::micro::Register_RESHAPE());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
+                               tflite::ops::micro::Register_SOFTMAX());
 
   // Build an interpreter to run the model with.
   static tflite::MicroInterpreter static_interpreter(
@@ -168,13 +172,11 @@ void loop()
 
   get_stored_image(input_image, image_number + offset_number);
 
-  input->data.uint8 = input_image;
-
   // Update downsampled current_frame
-  downscale(input->data.uint8);
+  downscale(input_image);
 
-  uint8_t *resized_img = (uint8_t *)heap_caps_malloc(96 * 96, MALLOC_CAP_SPIRAM);
-  uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT, MALLOC_CAP_SPIRAM);
+  uint8_t *resized_img = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
+  uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
 
   uint16_t changes;
   uint16_t accumelated_x;
@@ -190,30 +192,31 @@ void loop()
 
     // Allocate enough for maximum crop (Height x Height)
     uint32_t cropped_len = 0;
-    crop_image(input->data.uint8, cropped_image, changes, cropped_len, accumelated_x, accumelated_y);
+    crop_image(input_image, cropped_image, changes, cropped_len, accumelated_x, accumelated_y);
 
-    //stbir_resize_uint8(cropped_image, sqrt(cropped_len), sqrt(cropped_len), 0, resized_img, 96, 96, 0, 1);
-    image_resize_linear(resized_img, cropped_image, 96, 96, 1, sqrt(cropped_len), sqrt(cropped_len));
+    image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, sqrt(cropped_len), sqrt(cropped_len));
   }
   else
   {
-    crop_image_center(input->data.uint8, cropped_image);
+    //stbir_resize_uint8(input->data.uint8, WIDTH, HEIGHT, 0, resized_img, 96, 96, 0, 1);
+    crop_image_center(input_image, cropped_image);
 
-    //stbir_resize_uint8(cropped_image, HEIGHT, HEIGHT, 0, resized_img, 96, 96, 0, 1);
-    image_resize_linear(resized_img, cropped_image, 96, 96, 1, HEIGHT, HEIGHT);
+    image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, HEIGHT, HEIGHT);
   }
-
-  // Set tensorflow input
-  input->data.uint8 = resized_img;
 
   // Set prev_frame values to current_frame values
   update_frame();
 
   // Copy because invoke changes the input. Uses normal malloc since heap_caps_malloc gives NULL
-  uint8_t *temp_input = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H, MALLOC_CAP_SPIRAM);
+  uint8_t *temp_input = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
   if (temp_input == NULL)
     ESP_LOGI(TAG, "NULL TEMP_INPUT");
-  memcpy(temp_input, input->data.uint8, MODEL_INPUT_W * MODEL_INPUT_H);
+  memcpy(temp_input, resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS);
+
+  // Set tensorflow input
+  for (int i=0; i<MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS; i++) {
+    input->data.int8[i] = resized_img[i] - 128;
+  }
 
   // Run the model on this input and make sure it succeeds.
   if (kTfLiteOk != interpreter->Invoke())
@@ -224,14 +227,14 @@ void loop()
   TfLiteTensor *output = interpreter->output(0);
 
   // Process the inference results.
-  uint8_t person_score = output->data.uint8[kPersonIndex];
-  uint8_t no_person_score = output->data.uint8[kNotAPersonIndex];
+  uint8_t person_score = output->data.int8[kPersonIndex] + 128;
+  uint8_t no_person_score = output->data.int8[kNotAPersonIndex] + 128;
   bool human_detected = RespondToDetection(error_reporter, person_score, no_person_score);
 
   uint8_t *jpeg;
   size_t len;
 
-  fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+  fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
   if (esp_websocket_client_is_connected(client))
   {
