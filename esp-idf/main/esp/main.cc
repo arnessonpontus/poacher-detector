@@ -45,6 +45,9 @@ namespace
 } // namespace
 
 esp_websocket_client_handle_t client;
+uint8_t *resized_img;
+
+SemaphoreHandle_t mux;
 
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -107,6 +110,8 @@ void setup()
 
   ESP_LOGI(TAG, "filename_number %d", filename_number);
 
+  resized_img = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
+
   static tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
 
@@ -152,9 +157,9 @@ void setup()
   input = interpreter->input(0);
 }
 
-void loop()
-{
+void pre_process_loop() {
   uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
+  uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
 
   // Get image from provider.
   if (kTfLiteOk != GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
@@ -166,9 +171,6 @@ void loop()
   // Update downsampled current_frame
   downscale(input_image);
 
-  uint8_t *resized_img = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
-  uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
-
   uint16_t changes;
   uint16_t accumelated_x;
   uint16_t accumelated_y;
@@ -176,6 +178,8 @@ void loop()
   bg_subtraction(changes, accumelated_x, accumelated_y);
 
   bool motion_detected = (1.0 * changes / BLOCKS) > IMAGE_DIFF_THRESHOLD;
+
+  int cropped_height;
 
   if (motion_detected)
   {
@@ -185,28 +189,54 @@ void loop()
     uint32_t cropped_len = 0;
     crop_image(input_image, cropped_image, changes, cropped_len, accumelated_x, accumelated_y);
 
-    image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, sqrt(cropped_len), sqrt(cropped_len));
+    cropped_height = sqrt(cropped_len);
   }
   else
   {
     //stbir_resize_uint8(input->data.uint8, WIDTH, HEIGHT, 0, resized_img, 96, 96, 0, 1);
     crop_image_center(input_image, cropped_image);
 
-    image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, HEIGHT, HEIGHT);
+    cropped_height = HEIGHT;
+  }
+
+  if(xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE) {
+    image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, cropped_height, cropped_height);
+    xSemaphoreGive(mux);
   }
 
   // Set prev_frame values to current_frame values
   update_frame();
 
-  // Copy because invoke changes the input. Uses normal malloc since heap_caps_malloc gives NULL
-  uint8_t *temp_input = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
-  if (temp_input == NULL)
-    ESP_LOGI(TAG, "NULL TEMP_INPUT");
-  memcpy(temp_input, resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS);
+  uint8_t *jpeg;
+  size_t len;
 
-  // Set tensorflow input
-  for (int i=0; i<MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS; i++) {
-    input->data.int8[i] = resized_img[i] - 128;
+  fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+
+  if (esp_websocket_client_is_connected(client))
+  {
+    esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+  }
+
+  heap_caps_free(jpeg);
+
+  // char filename[0x100];
+  // snprintf(filename, sizeof(filename), "/sdcard/esp/%04d.jpg", filename_number);
+  // timeit("Save to sd card", save_to_sdcard(jpeg, len, filename));
+  // pref_putUInt("filename_number", ++filename_number);
+
+  heap_caps_free(input_image);
+  heap_caps_free(cropped_image);
+}
+
+void tf_main_loop()
+{
+  if(xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE) {
+    // Set tensorflow input
+    for (int i=0; i<MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS; i++) {
+      input->data.int8[i] = resized_img[i] - 128;
+    }
+
+    xSemaphoreGive(mux);
   }
 
   // Run the model on this input and make sure it succeeds.
@@ -225,42 +255,31 @@ void loop()
   if (human_detected)
   {
     ESP_LOGI(TAG, "********** HUMAN detected ***********");
-
-    uint8_t *jpeg;
-    size_t len;
-
-    fmt2jpg(temp_input, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
-
-    if (esp_websocket_client_is_connected(client))
-    {
-      esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
-    }
-
-    // char filename[0x100];
-    // snprintf(filename, sizeof(filename), "/sdcard/esp/%04d.jpg", filename_number);
-    // timeit("Save to sd card", save_to_sdcard(jpeg, len, filename));
-    // pref_putUInt("filename_number", ++filename_number);
-
-    heap_caps_free(jpeg);
   }
+}
+  
 
-  heap_caps_free(temp_input);
-  heap_caps_free(input_image);
-  heap_caps_free(resized_img);
-  heap_caps_free(cropped_image);
+int pre_process_main(int argc, char *argv[]) {
+  while (true)
+  {
+    timeit("pre process took: ", pre_process_loop());
+  }
 }
 
 int tf_main(int argc, char *argv[])
 {
-  setup();
   while (true)
   {
-    timeit("Loop took: ", loop());
+    timeit("tf took: ", tf_main_loop());
   }
 }
 
 extern "C" void app_main()
 {
-  xTaskCreate((TaskFunction_t)&tf_main, "tensorflow", 32 * 1024, NULL, 8, NULL);
+  setup();
+  mux = xSemaphoreCreateMutex();
+  xTaskCreatePinnedToCore((TaskFunction_t)&pre_process_main, "pre processing", 4 * 1024, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore((TaskFunction_t)&tf_main, "tensorflow", 32 * 1024, NULL, 8, NULL, 1);
+
   vTaskDelete(NULL);
 }

@@ -58,7 +58,7 @@ limitations under the License.
   gettimeofday(&stop, NULL);                                                                                           \
   ESP_LOGI(TAG, "%s took %f us", label, (float)(stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec); \
 }
-//#define timeit(label, code) code;
+#define timeit(label, code) code;
 
 // Expose a C friendly interface for main functions.
 #ifdef __cplusplus

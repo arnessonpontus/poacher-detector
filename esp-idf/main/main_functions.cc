@@ -184,8 +184,8 @@ void bg_subtraction(uint16_t &changes, uint16_t &accumelated_x, uint16_t &accume
     }
   }
 
-  ESP_LOGI(TAG, "Changed %d", changes);
-  ESP_LOGI(TAG, "out of %d blocks", BLOCKS);
+  //ESP_LOGI(TAG, "Changed %d", changes);
+  //ESP_LOGI(TAG, "out of %d blocks", BLOCKS);
 }
 
 void update_frame()
