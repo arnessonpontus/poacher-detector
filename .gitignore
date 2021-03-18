@@ -6,3 +6,4 @@ build/
 /utils/median_filter/mask_images/
 /utils/median_filter/motion_masks/
 /utils/output_images/
+secrets.h

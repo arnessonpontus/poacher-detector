@@ -26,6 +26,7 @@ limitations under the License.
 #include "../image_provider.h"
 #include "../detection_responder.h"
 #include "../constants.h"
+#include "../secrets.h"
 #include "../FtpClient.h"
 
 static const char *TAG = "MAIN";
@@ -47,6 +48,9 @@ namespace
 
 esp_websocket_client_handle_t client;
 uint8_t *resized_img;
+uint8_t detection_counter = 0;
+unsigned long last_detection_time;
+struct timeval current_time;
 
 SemaphoreHandle_t mux;
 
@@ -112,18 +116,6 @@ void setup()
   ESP_LOGI(TAG, "filename_number %d", filename_number);
 
   resized_img = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
-
-  static NetBuf_t* ftpClientNetBuf = NULL;
-  FtpClient* ftpClient = getFtpClient();
-  int ftp_err = ftpClient->ftpClientConnect("188.120.249.76", 21, &ftpClientNetBuf);
-
-  ftpClient->ftpClientLogin("test","test13", ftpClientNetBuf);
-  ftpClient->ftpClientChangeDir("/thesis", ftpClientNetBuf);
-
-  // ftpClient->ftpClientPut("/sdcard/test.txt", "test.txt",
-  //             FTP_CLIENT_BINARY, ftpClientNetBuf);
-
-  ftpClient->ftpClientQuit(ftpClientNetBuf);
 
   static tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
@@ -220,22 +212,17 @@ void pre_process_loop() {
   // Set prev_frame values to current_frame values
   update_frame();
 
-  uint8_t *jpeg;
-  size_t len;
+  // uint8_t *jpeg;
+  // size_t len;
 
-  fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+  // fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
-  if (esp_websocket_client_is_connected(client))
-  {
-    esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
-  }
+  // if (esp_websocket_client_is_connected(client))
+  // {
+  //   esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+  // }
 
-  heap_caps_free(jpeg);
-
-  // char filename[0x100];
-  // snprintf(filename, sizeof(filename), "/sdcard/esp/%04d.jpg", filename_number);
-  // timeit("Save to sd card", save_to_sdcard(jpeg, len, filename));
-  // pref_putUInt("filename_number", ++filename_number);
+  // heap_caps_free(jpeg);
 
   heap_caps_free(input_image);
   heap_caps_free(cropped_image);
@@ -243,10 +230,12 @@ void pre_process_loop() {
 
 void tf_main_loop()
 {
+  uint8_t *resized_img_copy = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
   if(xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE) {
     // Set tensorflow input
     for (int i=0; i<MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS; i++) {
       input->data.int8[i] = resized_img[i] - 128;
+      resized_img_copy[i] = resized_img[i];
     }
 
     xSemaphoreGive(mux);
@@ -268,6 +257,44 @@ void tf_main_loop()
   if (human_detected)
   {
     ESP_LOGI(TAG, "********** HUMAN detected ***********");
+    
+    gettimeofday(&current_time, NULL);
+
+    if ((unsigned long) current_time.tv_sec - last_detection_time > 6){
+      detection_counter = 0;
+    }
+    detection_counter++;
+
+    uint8_t *jpeg;
+    size_t len;
+    fmt2jpg(resized_img_copy, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+
+    char local_filename[0x100];
+    snprintf(local_filename, sizeof(local_filename), "/sdcard/esp/%04d.jpg", filename_number);
+    timeit("Save to sd card", save_to_sdcard(jpeg, len, local_filename));
+    
+    if (detection_counter == 3) {
+      static NetBuf_t* ftpClientNetBuf = NULL;
+      FtpClient* ftpClient = getFtpClient();
+      int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
+
+      ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
+      ftpClient->ftpClientChangeDir("/thesis", ftpClientNetBuf);
+
+      char remote_filename[0x100];
+      snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", filename_number);
+
+      ftpClient->ftpClientPut(local_filename, remote_filename,
+                  FTP_CLIENT_BINARY, ftpClientNetBuf);
+
+      ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
+
+      ftpClient->ftpClientQuit(ftpClientNetBuf);
+    }
+
+    last_detection_time = (unsigned long) current_time.tv_sec;
+    pref_putUInt("filename_number", ++filename_number);
+    heap_caps_free(jpeg);
   }
 }
   
