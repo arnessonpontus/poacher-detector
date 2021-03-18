@@ -51,6 +51,8 @@ uint8_t *resized_img;
 uint8_t detection_counter = 0;
 unsigned long last_detection_time;
 struct timeval current_time;
+static NetBuf_t* ftpClientNetBuf = NULL;
+FtpClient* ftpClient;
 
 SemaphoreHandle_t mux;
 
@@ -109,6 +111,12 @@ void setup()
   ESP_ERROR_CHECK(example_connect());
 
   //websocket_app_start();
+
+  ftpClient = getFtpClient();
+  int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
+
+  ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
+  ftpClient->ftpClientChangeDir("/thesis", ftpClientNetBuf);
 
   pref_begin("poach_det", false);
   filename_number = pref_getUInt("filename_number", 0);
@@ -274,22 +282,15 @@ void tf_main_loop()
     timeit("Save to sd card", save_to_sdcard(jpeg, len, local_filename));
     
     if (detection_counter == 3) {
-      static NetBuf_t* ftpClientNetBuf = NULL;
-      FtpClient* ftpClient = getFtpClient();
-      int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
-
-      ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-      ftpClient->ftpClientChangeDir("/thesis", ftpClientNetBuf);
-
       char remote_filename[0x100];
       snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", filename_number);
 
-      ftpClient->ftpClientPut(local_filename, remote_filename,
-                  FTP_CLIENT_BINARY, ftpClientNetBuf);
+      NetBuf_t* nData;
+      ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
+      ftpClient->ftpClientWrite(jpeg, len, nData);
+      ftpClient->ftpClientClose(nData);
 
       ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
-
-      ftpClient->ftpClientQuit(ftpClientNetBuf);
     }
 
     last_detection_time = (unsigned long) current_time.tv_sec;
