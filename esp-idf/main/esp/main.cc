@@ -26,6 +26,7 @@ limitations under the License.
 #include "../image_provider.h"
 #include "../detection_responder.h"
 #include "../constants.h"
+#include "../FtpClient.h"
 
 static const char *TAG = "MAIN";
 
@@ -103,7 +104,7 @@ void setup()
      */
   ESP_ERROR_CHECK(example_connect());
 
-  websocket_app_start();
+  //websocket_app_start();
 
   pref_begin("poach_det", false);
   filename_number = pref_getUInt("filename_number", 0);
@@ -111,6 +112,18 @@ void setup()
   ESP_LOGI(TAG, "filename_number %d", filename_number);
 
   resized_img = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
+
+  static NetBuf_t* ftpClientNetBuf = NULL;
+  FtpClient* ftpClient = getFtpClient();
+  int ftp_err = ftpClient->ftpClientConnect("188.120.249.76", 21, &ftpClientNetBuf);
+
+  ftpClient->ftpClientLogin("test","test13", ftpClientNetBuf);
+  ftpClient->ftpClientChangeDir("/thesis", ftpClientNetBuf);
+
+  // ftpClient->ftpClientPut("/sdcard/test.txt", "test.txt",
+  //             FTP_CLIENT_BINARY, ftpClientNetBuf);
+
+  ftpClient->ftpClientQuit(ftpClientNetBuf);
 
   static tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
