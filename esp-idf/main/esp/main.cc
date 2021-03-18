@@ -236,6 +236,39 @@ void pre_process_loop() {
   heap_caps_free(cropped_image);
 }
 
+void handle_detection(uint8_t* resized_img_copy) {
+  gettimeofday(&current_time, NULL);
+
+  if ((unsigned long) current_time.tv_sec - last_detection_time > 6){
+    detection_counter = 0;
+  }
+  detection_counter++;
+
+  uint8_t *jpeg;
+  size_t len;
+  fmt2jpg(resized_img_copy, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+
+  char local_filename[0x100];
+  snprintf(local_filename, sizeof(local_filename), "/sdcard/esp/%04d.jpg", filename_number);
+  timeit("Save to sd card", save_to_sdcard(jpeg, len, local_filename));
+  
+  if (detection_counter == 3) {
+    char remote_filename[0x100];
+    snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", filename_number);
+
+    NetBuf_t* nData;
+    ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
+    ftpClient->ftpClientWrite(jpeg, len, nData);
+    ftpClient->ftpClientClose(nData);
+
+    ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
+  }
+
+  last_detection_time = (unsigned long) current_time.tv_sec;
+  pref_putUInt("filename_number", ++filename_number);
+  heap_caps_free(jpeg);
+}
+
 void tf_main_loop()
 {
   uint8_t *resized_img_copy = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
@@ -265,41 +298,10 @@ void tf_main_loop()
   if (human_detected)
   {
     ESP_LOGI(TAG, "********** HUMAN detected ***********");
-    
-    gettimeofday(&current_time, NULL);
-
-    if ((unsigned long) current_time.tv_sec - last_detection_time > 6){
-      detection_counter = 0;
-    }
-    detection_counter++;
-
-    uint8_t *jpeg;
-    size_t len;
-    fmt2jpg(resized_img_copy, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
-
-    char local_filename[0x100];
-    snprintf(local_filename, sizeof(local_filename), "/sdcard/esp/%04d.jpg", filename_number);
-    timeit("Save to sd card", save_to_sdcard(jpeg, len, local_filename));
-    
-    if (detection_counter == 3) {
-      char remote_filename[0x100];
-      snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", filename_number);
-
-      NetBuf_t* nData;
-      ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
-      ftpClient->ftpClientWrite(jpeg, len, nData);
-      ftpClient->ftpClientClose(nData);
-
-      ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
-    }
-
-    last_detection_time = (unsigned long) current_time.tv_sec;
-    pref_putUInt("filename_number", ++filename_number);
-    heap_caps_free(jpeg);
+    handle_detection(resized_img_copy);
   }
 }
   
-
 int pre_process_main(int argc, char *argv[]) {
   while (true)
   {
