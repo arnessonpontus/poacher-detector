@@ -116,7 +116,7 @@ void setup()
   int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
 
   ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-  ftpClient->ftpClientChangeDir("/thesis", ftpClientNetBuf);
+  ftpClient->ftpClientChangeDir("/thesis/office", ftpClientNetBuf);
 
   pref_begin("poach_det", false);
   filename_number = pref_getUInt("filename_number", 0);
@@ -232,6 +232,8 @@ void pre_process_loop() {
 
   // heap_caps_free(jpeg);
 
+  vTaskDelay(200 / portTICK_PERIOD_MS);
+
   heap_caps_free(input_image);
   heap_caps_free(cropped_image);
 }
@@ -248,9 +250,9 @@ void handle_detection(uint8_t* resized_img_copy) {
   size_t len;
   fmt2jpg(resized_img_copy, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
-  char local_filename[0x100];
-  snprintf(local_filename, sizeof(local_filename), "/sdcard/esp/%04d.jpg", filename_number);
-  timeit("Save to sd card", save_to_sdcard(jpeg, len, local_filename));
+  // char local_filename[0x100];
+  // snprintf(local_filename, sizeof(local_filename), "/sdcard/esp/%04d.jpg", filename_number);
+  // timeit("Save to sd card", save_to_sdcard(jpeg, len, local_filename));
   
   if (detection_counter == 3) {
     char remote_filename[0x100];
@@ -300,6 +302,8 @@ void tf_main_loop()
     ESP_LOGI(TAG, "********** HUMAN detected ***********");
     handle_detection(resized_img_copy);
   }
+
+  heap_caps_free(resized_img_copy);
 }
   
 int pre_process_main(int argc, char *argv[]) {

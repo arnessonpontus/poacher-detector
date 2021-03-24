@@ -83,10 +83,10 @@ void crop_image(uint8_t *src, uint8_t *dst, uint16_t changes, uint32_t &cropped_
 
   float half_width = MAXIMUM(variance_x, variance_y) * CROP_FACTOR;
 
-  // Mult by 10 to get pixel in original img
-  mean_x *= 10;
-  mean_y *= 10;
-  half_width *= 10;
+  // Mult by BLOCK_SIZE to get pixel in original img
+  mean_x *= BLOCK_SIZE;
+  mean_y *= BLOCK_SIZE;
+  half_width *= BLOCK_SIZE;
   half_width = MINIMUM(half_width, (float)(HEIGHT / 2));
 
   // Shift crop towards head
