@@ -18,9 +18,12 @@ logger = logging.getLogger('websockets.server')
 logger.setLevel(logging.ERROR)
 logger.addHandler(logging.StreamHandler())
 import cv2
+import ftplib
+import secrets
 
 detect_fn = None
 category_index = None
+session = None
 
 def load_image_into_numpy_array(path):
     """Load an image from file into a numpy array.
@@ -90,7 +93,7 @@ def run_inference(message):
             min_score_thresh=.30,
             agnostic_mode=False)
 
-    image = Image.fromarray(image_np_with_detections)
+    image = image_np_with_detections
     #buf = BytesIO()
     #image.save(buf, format="JPEG")
 
@@ -100,13 +103,19 @@ async def hello(websocket, path):
     while True:
         async for message in websocket:
             image, max_score = run_inference(message)
-            cv2.imshow('image', np.array(image))
+            cv2.imshow('image', image)
             cv2.waitKey(1)
             
             print("Max score: ", max_score)
             if max_score > 0.3:
                 print("*********HUMAN DETECTED**********")
-        #await websocket.send(message)
+                img = Image.fromarray(image)
+                temp = BytesIO()
+                img.save(temp, format="JPEG")
+                temp.seek(0)
+                session.storbinary('STOR /thesis/highend/test.jpeg', temp)
+
+                await websocket.send("humandetected")
 
 if __name__ == '__main__':
     PATH_TO_SAVED_MODEL = "../local_inference/model/saved_model"
@@ -124,6 +133,9 @@ if __name__ == '__main__':
 
     category_index = label_map_util.create_category_index_from_labelmap(PATH_TO_LABELS,
                                                                     use_display_name=True)
+
+    session = ftplib.FTP(secrets.FTP_HOST, secrets.FTP_USER, secrets.FTP_PASS)
+    session.set_debuglevel(2)
 
     asyncio.get_event_loop().run_until_complete(
         websockets.serve(hello, '192.168.243.93', 8888, ping_interval=None))

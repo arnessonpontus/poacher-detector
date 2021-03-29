@@ -32,6 +32,8 @@ void setup() {
   Serial.setDebugOutput(true);
   Serial.println();
 
+  pinMode(4, OUTPUT); // Set led pin
+
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -93,7 +95,10 @@ void setup() {
   }
   Serial.println("Websocket Connected!");
   
-  Serial.println("Websocket Hopefully Connected!");
+  client.onMessage([&](WebsocketsMessage message){
+    Serial.print("Human detected on server");
+    flash_led(200);
+  });
 }
 
 void loop() {
@@ -111,6 +116,16 @@ void loop() {
   Serial.println("Image sent!");
   client.sendBinary((const char*) fb->buf, fb->len);
 
+  if(client.available()) {
+    client.poll();
+  }
+
   delay(300);
   esp_camera_fb_return(fb);
+}
+
+void flash_led(unsigned long ms) {
+    digitalWrite(4, HIGH); //Turn on led
+    delay(ms); // Wait ms
+    digitalWrite(4, LOW); //Turn off led
 }
