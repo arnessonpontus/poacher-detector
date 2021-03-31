@@ -59,6 +59,7 @@ FtpClient* ftpClient;
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
+bool run_tf = false;
 
 SemaphoreHandle_t mux;
 
@@ -160,7 +161,7 @@ static void websocket_app_start(void)
 {
   esp_websocket_client_config_t websocket_cfg = {};
 
-  websocket_cfg.uri = CONFIG_WEBSOCKET_URI;
+  websocket_cfg.uri = CONFIG_ESP_WEBSOCKET_URI;
 
   ESP_LOGI(TAG, "Connecting to %s...", websocket_cfg.uri);
 
@@ -203,7 +204,7 @@ void setup()
      * examples/protocols/README.md for more information about this function.
      */
 
-  //websocket_app_start();
+  websocket_app_start();
 
   ftpClient = getFtpClient();
   int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
@@ -283,6 +284,8 @@ void pre_process_loop() {
 
   bg_subtraction(changes, accumelated_x, accumelated_y);
 
+  run_tf = false;
+
   bool motion_detected = (1.0 * changes / BLOCKS) > IMAGE_DIFF_THRESHOLD;
 
   int cropped_height;
@@ -296,34 +299,28 @@ void pre_process_loop() {
     crop_image(input_image, cropped_image, changes, cropped_len, accumelated_x, accumelated_y);
 
     cropped_height = sqrt(cropped_len);
-  }
-  else
-  {
-    //stbir_resize_uint8(input->data.uint8, WIDTH, HEIGHT, 0, resized_img, 96, 96, 0, 1);
-    crop_image_center(input_image, cropped_image);
 
-    cropped_height = HEIGHT;
-  }
+    if(xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE) {
+      image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, cropped_height, cropped_height);
+      run_tf = true;
+      xSemaphoreGive(mux);
+    }
 
-  if(xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE) {
-    image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, cropped_height, cropped_height);
-    xSemaphoreGive(mux);
+    // uint8_t *jpeg;
+    // size_t len;
+
+    // fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+
+    // if (esp_websocket_client_is_connected(client))
+    // {
+    //   esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+    // }
+
+    // heap_caps_free(jpeg);
   }
 
   // Set prev_frame values to current_frame values
   update_frame();
-
-  // uint8_t *jpeg;
-  // size_t len;
-
-  // fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
-
-  // if (esp_websocket_client_is_connected(client))
-  // {
-  //   esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
-  // }
-
-  // heap_caps_free(jpeg);
 
   vTaskDelay(200 / portTICK_PERIOD_MS);
 
@@ -378,6 +375,11 @@ void handle_detection(uint8_t* resized_img_copy) {
 
 void tf_main_loop()
 {
+  if (run_tf == false) {
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+    return;
+  }
+
   uint8_t *resized_img_copy = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
   if(xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE) {
     // Set tensorflow input
