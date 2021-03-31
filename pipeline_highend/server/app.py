@@ -90,7 +90,7 @@ def run_inference(message):
             category_index,
             use_normalized_coordinates=True,
             max_boxes_to_draw=200,
-            min_score_thresh=.30,
+            min_score_thresh=.50,
             agnostic_mode=False)
 
     image = image_np_with_detections
@@ -107,7 +107,7 @@ async def hello(websocket, path):
             cv2.waitKey(1)
             
             print("Max score: ", max_score)
-            if max_score > 0.3:
+            if max_score > 0.5:
                 print("*********HUMAN DETECTED**********")
                 img = Image.fromarray(image)
                 temp = BytesIO()
