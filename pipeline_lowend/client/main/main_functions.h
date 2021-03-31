@@ -17,23 +17,10 @@ limitations under the License.
 
 #include <sys/time.h>
 #include "image_util.h"
-
 #include <stdio.h>
-#include "esp_wifi.h"
 #include "esp_system.h"
-#include "nvs_flash.h"
-#include "esp_event.h"
-#include "protocol_examples_common.h"
-#include "esp_websocket_client.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
-#include "freertos/event_groups.h"
-
 #include "esp_log.h"
-
 #include "img_converters.h"
-
 #include <string.h>
 #include <sys/unistd.h>
 #include <sys/stat.h>
@@ -45,10 +32,7 @@ limitations under the License.
 #include "sdkconfig.h"
 #include "preferences.h"
 #include <errno.h>
-
-#ifdef CONFIG_IDF_TARGET_ESP32
 #include "driver/sdmmc_host.h"
-#endif
 
 #define timeit(label, code)                                                                                            \
 {                                                                                                                      \

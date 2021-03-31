@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "../main_functions.h"
-
+#include "../esp_wifi_handler.h"
 #include "../model_settings.h"
 #include "../person_detect_model_data.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
@@ -23,14 +23,16 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
+#include "esp_event.h"
+#include "esp_websocket_client.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "../image_provider.h"
 #include "../detection_responder.h"
 #include "../constants.h"
 #include "../secrets.h"
 #include "../FtpClient.h"
-
-#define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT	   BIT1
 
 static const char *TAG = "MAIN";
 
@@ -46,7 +48,7 @@ namespace
 
   // An area of memory to use for input, output, and intermediate arrays.
   constexpr int kTensorArenaSize = 93 * 1024 * 4;
-  static uint8_t* tensor_arena = (uint8_t*) heap_caps_malloc(kTensorArenaSize, MALLOC_CAP_SPIRAM);
+  static uint8_t *tensor_arena = (uint8_t *)heap_caps_malloc(kTensorArenaSize, MALLOC_CAP_SPIRAM);
 } // namespace
 
 esp_websocket_client_handle_t client;
@@ -54,11 +56,9 @@ uint8_t *resized_img;
 uint8_t detection_counter = 0;
 unsigned long last_detection_time;
 struct timeval current_time;
-static NetBuf_t* ftpClientNetBuf = NULL;
-FtpClient* ftpClient;
-/* FreeRTOS event group to signal when we are connected*/
-static EventGroupHandle_t s_wifi_event_group;
-static int s_retry_num = 0;
+static NetBuf_t *ftpClientNetBuf = NULL;
+FtpClient *ftpClient;
+
 bool run_tf = false;
 
 SemaphoreHandle_t mux;
@@ -78,83 +78,6 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
     ESP_LOGI(TAG, "WEBSOCKET_EVENT_ERROR");
     break;
   }
-}
-
-static void event_handler(void* arg, esp_event_base_t event_base,
-								int32_t event_id, void* event_data)
-{
-	if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-		esp_wifi_connect();
-	} else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-    ESP_LOGI(TAG,"Disconnected from wifi, restarting ESP...");
-    esp_restart();
-		// if (s_retry_num < 3) {
-		// 	esp_wifi_connect();
-		// 	s_retry_num++;
-		// 	ESP_LOGI(TAG, "retry to connect to the AP");
-		// } else {
-		// 	xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
-		// }
-		// ESP_LOGI(TAG,"connect to the AP fail");
-	} else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-		ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-		ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
-		// s_retry_num = 0;
-		xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-	}
-} 
-
-esp_err_t wifi_init_sta()
-{
-	esp_err_t ret_value = ESP_OK;
-	s_wifi_event_group = xEventGroupCreate();
-
-	ESP_ERROR_CHECK(esp_netif_init());
-
-	ESP_ERROR_CHECK(esp_event_loop_create_default());
-	esp_netif_create_default_wifi_sta();
-
-	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-
-	ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
-	ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
-
-  wifi_config_t wifi_config = {};
-  strcpy((char*)wifi_config.sta.ssid, (const char*)CONFIG_ESP_WIFI_SSID);
-  strcpy((char*)wifi_config.sta.password, (const char*)CONFIG_ESP_WIFI_PASSWORD);
-
-	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
-	ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
-	ESP_ERROR_CHECK(esp_wifi_start() );
-
-	/* Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection failed for the maximum
-	 * number of re-tries (WIFI_FAIL_BIT). The bits are set by event_handler() (see above) */
-	EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-		WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-		pdFALSE,			// xClearOnExit
-		pdFALSE,			// xWaitForAllBits
-		portMAX_DELAY);
-
-	/* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
-	 * happened. */
-	if (bits & WIFI_CONNECTED_BIT) {
-		ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
-			 CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-	} else if (bits & WIFI_FAIL_BIT) {
-		ESP_LOGE(TAG, "Failed to connect to SSID:%s, password:%s",
-			 CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
-		ret_value = ESP_FAIL;
-	} else {
-		ESP_LOGE(TAG, "UNEXPECTED EVENT");
-		ret_value = ESP_ERR_INVALID_STATE;
-	}
-
-	ESP_LOGI(TAG, "wifi_init_sta finished.");
-	ESP_LOGI(TAG, "connect to ap SSID:%s", CONFIG_ESP_WIFI_SSID);
-	vEventGroupDelete(s_wifi_event_group); 
-	return ret_value; 
 }
 
 static void websocket_app_start(void)
@@ -182,21 +105,26 @@ void setup()
   esp_log_level_set("TRANSPORT_WS", ESP_LOG_DEBUG);
   esp_log_level_set("TRANS_TCP", ESP_LOG_DEBUG);
 
-	esp_err_t ret;
-	ret = nvs_flash_init();
+  esp_err_t ret;
+  ret = nvs_flash_init();
   ESP_ERROR_CHECK(esp_netif_init());
-	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-	  ESP_ERROR_CHECK(nvs_flash_erase());
-	  ret = nvs_flash_init();
-	}
-	ESP_ERROR_CHECK(ret);
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+  {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ret = nvs_flash_init();
+  }
+  ESP_ERROR_CHECK(ret);
 
-	ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
-	if (wifi_init_sta() != ESP_OK) {
-		ESP_LOGE(TAG, "Connection failed");
-		while(1) { vTaskDelay(1); }
-	}
-  
+  ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
+  if (wifi_init_sta() != ESP_OK)
+  {
+    ESP_LOGE(TAG, "Connection failed");
+    while (1)
+    {
+      vTaskDelay(1);
+    }
+  }
+
   setup_mf();
 
   /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
@@ -264,7 +192,8 @@ void setup()
   input = interpreter->input(0);
 }
 
-void pre_process_loop() {
+void pre_process_loop()
+{
   uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
   uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
 
@@ -300,23 +229,24 @@ void pre_process_loop() {
 
     cropped_height = sqrt(cropped_len);
 
-    if(xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE) {
+    if (xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE)
+    {
       image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, cropped_height, cropped_height);
       run_tf = true;
       xSemaphoreGive(mux);
     }
 
-    // uint8_t *jpeg;
-    // size_t len;
+    uint8_t *jpeg;
+    size_t len;
 
-    // fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+    fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
-    // if (esp_websocket_client_is_connected(client))
-    // {
-    //   esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
-    // }
+    if (esp_websocket_client_is_connected(client))
+    {
+      esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+    }
 
-    // heap_caps_free(jpeg);
+    heap_caps_free(jpeg);
   }
 
   // Set prev_frame values to current_frame values
@@ -328,10 +258,12 @@ void pre_process_loop() {
   heap_caps_free(cropped_image);
 }
 
-void handle_detection(uint8_t* resized_img_copy) {
+void handle_detection(uint8_t *resized_img_copy)
+{
   gettimeofday(&current_time, NULL);
 
-  if ((unsigned long) current_time.tv_sec - last_detection_time > 6){
+  if ((unsigned long)current_time.tv_sec - last_detection_time > 6)
+  {
     detection_counter = 0;
   }
   detection_counter++;
@@ -343,14 +275,16 @@ void handle_detection(uint8_t* resized_img_copy) {
   // char local_filename[0x100];
   // snprintf(local_filename, sizeof(local_filename), "/sdcard/esp/%04d.jpg", filename_number);
   // timeit("Save to sd card", save_to_sdcard(jpeg, len, local_filename));
-  
-  if (detection_counter == 3) {
+
+  if (detection_counter == 3)
+  {
     char remote_filename[0x100];
     snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", filename_number);
 
-    NetBuf_t* nData;
+    NetBuf_t *nData;
     int connection_response = ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
-    if (!connection_response) {
+    if (!connection_response)
+    {
       ESP_LOGI(TAG, "Could not send file to FTP, reconnecting to FTP...");
 
       int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
@@ -361,29 +295,35 @@ void handle_detection(uint8_t* resized_img_copy) {
     int write_len = ftpClient->ftpClientWrite(jpeg, len, nData);
     ftpClient->ftpClientClose(nData);
 
-    if (write_len) {
+    if (write_len)
+    {
       ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
-    } else {
+    }
+    else
+    {
       ESP_LOGI(TAG, "COULD NOT WRITE DATA");
     }
   }
 
-  last_detection_time = (unsigned long) current_time.tv_sec;
+  last_detection_time = (unsigned long)current_time.tv_sec;
   pref_putUInt("filename_number", ++filename_number);
   heap_caps_free(jpeg);
 }
 
 void tf_main_loop()
 {
-  if (run_tf == false) {
+  if (run_tf == false)
+  {
     vTaskDelay(10 / portTICK_PERIOD_MS);
     return;
   }
 
   uint8_t *resized_img_copy = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
-  if(xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE) {
+  if (xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE)
+  {
     // Set tensorflow input
-    for (int i=0; i<MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS; i++) {
+    for (int i = 0; i < MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS; i++)
+    {
       input->data.int8[i] = resized_img[i] - 128;
       resized_img_copy[i] = resized_img[i];
     }
@@ -412,8 +352,9 @@ void tf_main_loop()
 
   heap_caps_free(resized_img_copy);
 }
-  
-int pre_process_main(int argc, char *argv[]) {
+
+int pre_process_main(int argc, char *argv[])
+{
   while (true)
   {
     timeit("pre process took: ", pre_process_loop());
