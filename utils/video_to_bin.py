@@ -10,8 +10,8 @@ def crop(image):
 
     aspect = width / float(height)
 
-    ideal_width = 320
-    ideal_height = 240
+    ideal_width = 800
+    ideal_height = 600
 
     ideal_aspect = ideal_width / float(ideal_height)
 
@@ -29,24 +29,24 @@ def crop(image):
     cropped = image.crop(resize).resize((ideal_width, ideal_height), Image.ANTIALIAS)
     return cropped
 
-cap = cv2.VideoCapture('wildlife.mov')
+cap = cv2.VideoCapture('IMG_0159.MOV')
 
-frame_rate = 1.5
+recorded_fps = 30
+frame_rate = 5
 prev = 0
 filename_counter = 0
 
+counter = 0
 while(True):
-    time_elapsed = time.time() - prev
     res, frame = cap.read()
 
-    if time_elapsed > 1./frame_rate:
-        prev = time.time()
+    if counter % (recorded_fps/frame_rate) == 0:
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         cropped_img = crop(gray)
 
-        cropped_img.save('output_images/{0:04}'.format(filename_counter) + ".jpg")
+        cropped_img.save('output_images_2/{0:04}'.format(filename_counter) + ".jpg")
 
         f = open('output_images/{0:04}'.format(filename_counter) + ".bin", "wb")
         f.write(cropped_img.tobytes())
@@ -56,6 +56,8 @@ while(True):
         cv2.imshow('frame',gray)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
+
+    counter += 1
 
 # When everything done, release the capture
 cap.release()

@@ -103,7 +103,8 @@ async def hello(websocket, path):
     while True:
         async for message in websocket:
             image, max_score = run_inference(message)
-            cv2.imshow('image', image)
+            img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            cv2.imshow('image', img)
             cv2.waitKey(1)
             
             print("Max score: ", max_score)
@@ -135,7 +136,7 @@ if __name__ == '__main__':
                                                                     use_display_name=True)
 
     session = ftplib.FTP(secrets.FTP_HOST, secrets.FTP_USER, secrets.FTP_PASS)
-    session.set_debuglevel(2)
+    session.set_debuglevel(0)
 
     asyncio.get_event_loop().run_until_complete(
         websockets.serve(hello, '192.168.243.93', 8888, ping_interval=None))

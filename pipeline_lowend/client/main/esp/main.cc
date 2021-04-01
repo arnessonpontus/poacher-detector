@@ -127,12 +127,7 @@ void setup()
 
   setup_mf();
 
-  /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
-     * Read "Establishing Wi-Fi or Ethernet Connection" section in
-     * examples/protocols/README.md for more information about this function.
-     */
-
-  websocket_app_start();
+  //websocket_app_start();
 
   ftpClient = getFtpClient();
   int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
@@ -236,17 +231,17 @@ void pre_process_loop()
       xSemaphoreGive(mux);
     }
 
-    uint8_t *jpeg;
-    size_t len;
+    // uint8_t *jpeg;
+    // size_t len;
 
-    fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+    // fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
-    if (esp_websocket_client_is_connected(client))
-    {
-      esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
-    }
+    // if (esp_websocket_client_is_connected(client))
+    // {
+    //   esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+    // }
 
-    heap_caps_free(jpeg);
+    // heap_caps_free(jpeg);
   }
 
   // Set prev_frame values to current_frame values
