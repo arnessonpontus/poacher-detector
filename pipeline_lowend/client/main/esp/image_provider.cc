@@ -65,7 +65,7 @@ TfLiteStatus PerformCapture(tflite::ErrorReporter *error_reporter,
   {
     return kTfLiteError;
   }
-  TF_LITE_REPORT_ERROR(error_reporter, "Image Captured\n");
+  //TF_LITE_REPORT_ERROR(error_reporter, "Image Captured\n");
 
   memcpy(image_data, fb->buf, fb->len);
 

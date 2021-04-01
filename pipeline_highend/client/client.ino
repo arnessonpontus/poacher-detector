@@ -8,17 +8,17 @@
 const char* ssid = "Pone Plus";
 const char* password = "Sutnop123";
 const char* websocket_server_host = "192.168.243.93";
-const uint16_t websocket_server_port = 8888;
+const uint16_t websocket_server_port = 8887;
 
-#define FRAME_SIZE FRAMESIZE_VGA
+#define FRAME_SIZE FRAMESIZE_SVGA
 #define PIXFORMAT PIXFORMAT_JPEG
-#define WIDTH 640
-#define HEIGHT 480
+#define WIDTH 800
+#define HEIGHT 600
 #define BLOCK_SIZE 10
 #define W (WIDTH / BLOCK_SIZE)
 #define H (HEIGHT / BLOCK_SIZE)
 #define BLOCK_DIFF_THRESHOLD 0.15
-#define IMAGE_DIFF_THRESHOLD 0.03
+#define IMAGE_DIFF_THRESHOLD 0.015
 #define DEBUG 0
 
 uint16_t *prev_frame;

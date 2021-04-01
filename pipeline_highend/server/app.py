@@ -25,21 +25,6 @@ detect_fn = None
 category_index = None
 session = None
 
-def load_image_into_numpy_array(path):
-    """Load an image from file into a numpy array.
-
-    Puts image into numpy array to feed into tensorflow graph.
-    Note that by convention we put it into a numpy array with shape
-    (height, width, channels), where channels=3 for RGB.
-
-    Args:
-      path: the file path to the image
-
-    Returns:
-      uint8 numpy array with shape (img_height, img_width, 3)
-    """
-    return np.array(Image.open(path))
-
 def run_inference(message):
     image_path = "../../dataset/test/image_{0:04}.jpg".format(random.randint(0, 101))
     #print('Running inference for {}... '.format(image_path), end='')
@@ -48,15 +33,6 @@ def run_inference(message):
     img = Image.open(file_jpgdata)
     image_np = np.array(img)
 
-    #image_np = load_image_into_numpy_array(image_path)
-
-    # Things to try:
-    # Flip horizontally
-    # image_np = np.fliplr(image_np).copy()
-
-    # Convert image to grayscale
-    # image_np = np.tile(
-    #     np.mean(image_np, 2, keepdims=True), (1, 1, 3)).astype(np.uint8)
 
     # The input needs to be a tensor, convert it using `tf.convert_to_tensor`.
     input_tensor = tf.convert_to_tensor(image_np)
@@ -119,8 +95,8 @@ async def hello(websocket, path):
                 await websocket.send("humandetected")
 
 if __name__ == '__main__':
-    PATH_TO_SAVED_MODEL = "../local_inference/model/saved_model"
-    PATH_TO_LABELS = "../local_inference/label_map.pbtxt"
+    PATH_TO_SAVED_MODEL = "../evaluate/model/saved_model"
+    PATH_TO_LABELS = "../evaluate/label_map.pbtxt"
 
     print('Loading model...', end='')
     start_time = time.time()
@@ -139,5 +115,5 @@ if __name__ == '__main__':
     session.set_debuglevel(0)
 
     asyncio.get_event_loop().run_until_complete(
-        websockets.serve(hello, '192.168.243.93', 8888, ping_interval=None))
+        websockets.serve(hello, '192.168.243.93', 8887, ping_interval=None))
     asyncio.get_event_loop().run_forever()
