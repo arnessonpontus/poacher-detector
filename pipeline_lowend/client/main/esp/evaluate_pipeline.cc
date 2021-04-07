@@ -27,16 +27,16 @@ limitations under the License.
 #include "esp_websocket_client.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/semphr.h"
 #include "../image_provider.h"
 #include "../detection_responder.h"
 #include "../constants.h"
 #include "../secrets.h"
 #include "../FtpClient.h"
 
-static const char *TAG = "MAIN";
+static const char *TAG = "EVAL_PIPELINE";
 
-uint32_t filename_number = 0;
+uint16_t num_images = 66;
+uint16_t image_number = 0;
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace
@@ -61,8 +61,6 @@ static NetBuf_t *ftpClientNetBuf = NULL;
 FtpClient *ftpClient;
 
 bool run_tf = false;
-
-SemaphoreHandle_t mux;
 
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -134,12 +132,7 @@ void setup()
   int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
 
   ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-  ftpClient->ftpClientChangeDir("/thesis-office", ftpClientNetBuf);
-
-  pref_begin("poach_det", false);
-  filename_number = pref_getUInt("filename_number", 0);
-
-  ESP_LOGI(TAG, "filename_number %d", filename_number);
+  ftpClient->ftpClientChangeDir("/thesis-lowend", ftpClientNetBuf);
 
   resized_img = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
 
@@ -194,11 +187,13 @@ void pre_process_loop()
   uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
 
   // Get image from provider.
-  if (kTfLiteOk != GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
-                            input_image))
-  {
-    TF_LITE_REPORT_ERROR(error_reporter, "Image capture failed.");
-  }
+  // if (kTfLiteOk != GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
+  //                           input_image))
+  // {
+  //   TF_LITE_REPORT_ERROR(error_reporter, "Image capture failed.");
+  // }
+
+  get_stored_image(input_image, image_number);
 
   // Update downsampled current_frame
   downscale(input_image);
@@ -225,12 +220,8 @@ void pre_process_loop()
 
     cropped_height = sqrt(cropped_len);
 
-    if (xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE)
-    {
-      image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, cropped_height, cropped_height);
-      run_tf = true;
-      xSemaphoreGive(mux);
-    }
+    image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, cropped_height, cropped_height);
+    run_tf = true;
 
     uint8_t *jpeg;
     size_t len;
@@ -250,6 +241,8 @@ void pre_process_loop()
 
   vTaskDelay(200 / portTICK_PERIOD_MS);
 
+  image_number++;
+
   heap_caps_free(input_image);
   heap_caps_free(cropped_image);
 }
@@ -268,16 +261,12 @@ void handle_detection(uint8_t *resized_img_copy)
   size_t len;
   fmt2jpg(resized_img_copy, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
-  // char local_filename[0x100];
-  // snprintf(local_filename, sizeof(local_filename), "/sdcard/esp/%04d.jpg", filename_number);
-  // timeit("Save to sd card", save_to_sdcard(jpeg, len, local_filename));
-
   if (detection_counter == 3 && (unsigned long)current_time.tv_sec - last_event_time > 120)
   {
     last_event_time = (unsigned long)current_time.tv_sec;
 
     char remote_filename[0x100];
-    snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", filename_number);
+    snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", image_number);
 
     NetBuf_t *nData;
     int connection_response = ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
@@ -287,7 +276,7 @@ void handle_detection(uint8_t *resized_img_copy)
 
       int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
       ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-      ftpClient->ftpClientChangeDir("/thesis-office", ftpClientNetBuf);
+      ftpClient->ftpClientChangeDir("/thesis-lowend", ftpClientNetBuf);
       ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
     }
     int write_len = ftpClient->ftpClientWrite(jpeg, len, nData);
@@ -304,7 +293,7 @@ void handle_detection(uint8_t *resized_img_copy)
   }
 
   last_detection_time = (unsigned long)current_time.tv_sec;
-  pref_putUInt("filename_number", ++filename_number);
+
   heap_caps_free(jpeg);
 }
 
@@ -312,21 +301,16 @@ void tf_main_loop()
 {
   if (run_tf == false)
   {
-    vTaskDelay(10 / portTICK_PERIOD_MS);
     return;
   }
 
   uint8_t *resized_img_copy = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
-  if (xSemaphoreTake(mux, portMAX_DELAY) == pdTRUE)
+  
+  // Set tensorflow input
+  for (int i = 0; i < MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS; i++)
   {
-    // Set tensorflow input
-    for (int i = 0; i < MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS; i++)
-    {
-      input->data.int8[i] = resized_img[i] - 128;
-      resized_img_copy[i] = resized_img[i];
-    }
-
-    xSemaphoreGive(mux);
+    input->data.int8[i] = resized_img[i] - 128;
+    resized_img_copy[i] = resized_img[i];
   }
 
   // Run the model on this input and make sure it succeeds.
@@ -351,28 +335,25 @@ void tf_main_loop()
   heap_caps_free(resized_img_copy);
 }
 
-int pre_process_main(int argc, char *argv[])
-{
-  while (true)
-  {
-    timeit("pre process took: ", pre_process_loop());
-  }
-}
-
 int tf_main(int argc, char *argv[])
 {
   while (true)
   {
-    timeit("tf took: ", tf_main_loop());
+    if (image_number == num_images) {
+      ESP_LOGI(TAG, "FINISHED");
+      vTaskDelay(1000000 / portTICK_PERIOD_MS);
+      return 0;
+    }
+    timeit("pre process took: ", pre_process_loop());
+    if (image_number % 5 == 0) {
+      timeit("tf took: ", tf_main_loop());
+    }
   }
 }
 
 extern "C" void app_main()
 {
   setup();
-  mux = xSemaphoreCreateMutex();
-  xTaskCreatePinnedToCore((TaskFunction_t)&pre_process_main, "pre processing", 4 * 1024, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore((TaskFunction_t)&tf_main, "tensorflow", 32 * 1024, NULL, 8, NULL, 1);
-
+  xTaskCreate((TaskFunction_t)&tf_main, "tensorflow", 32 * 1024, NULL, 8, NULL);
   vTaskDelete(NULL);
 }

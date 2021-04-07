@@ -7,5 +7,5 @@ build/
 /utils/median_filter/motion_masks/
 /utils/output_images*/
 secrets.h
-secrets.py
-pipeline_highend/evaluate/model*
+config.py
+pipeline_highend/models/model*
