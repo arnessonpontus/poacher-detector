@@ -31,7 +31,6 @@ limitations under the License.
 #include "../detection_responder.h"
 #include "../constants.h"
 #include "../secrets.h"
-#include "../FtpClient.h"
 
 static const char *TAG = "EVAL_PIPELINE";
 
@@ -61,8 +60,6 @@ uint8_t detection_counter = 0;
 unsigned long last_detection_time = 0;
 unsigned long last_event_time = -999999999;
 struct timeval current_time;
-static NetBuf_t *ftpClientNetBuf = NULL;
-FtpClient *ftpClient;
 
 bool run_tf = false;
 
@@ -131,12 +128,6 @@ void setup()
   setup_mf();
 
   websocket_app_start();
-
-  ftpClient = getFtpClient();
-  int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
-
-  ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-  ftpClient->ftpClientChangeDir("/thesis-lowend", ftpClientNetBuf);
 
   resized_img = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
 
@@ -261,32 +252,6 @@ void handle_detection(uint8_t *resized_img_copy)
     event_created = true;
 
     ESP_LOGI(TAG, "Event created");
-
-    // char remote_filename[0x100];
-    // snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", image_number);
-
-    // NetBuf_t *nData;
-    // int connection_response = ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
-    // if (!connection_response)
-    // {
-    //   ESP_LOGI(TAG, "Could not send file to FTP, reconnecting to FTP...");
-
-    //   int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
-    //   ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-    //   ftpClient->ftpClientChangeDir("/thesis-lowend", ftpClientNetBuf);
-    //   ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
-    // }
-    // int write_len = ftpClient->ftpClientWrite(jpeg, len, nData);
-    // ftpClient->ftpClientClose(nData);
-
-    // if (write_len)
-    // {
-    //   ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
-    // }
-    // else
-    // {
-    //   ESP_LOGI(TAG, "COULD NOT WRITE DATA");
-    // }
   }
 
   last_detection_time = (unsigned long)current_time.tv_sec;

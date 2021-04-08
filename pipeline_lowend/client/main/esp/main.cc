@@ -134,7 +134,7 @@ void setup()
   int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
 
   ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-  ftpClient->ftpClientChangeDir("/thesis-office", ftpClientNetBuf);
+  ftpClient->ftpClientChangeDir("/thesis-temp", ftpClientNetBuf);
 
   pref_begin("poach_det", false);
   filename_number = pref_getUInt("filename_number", 0);
@@ -254,16 +254,8 @@ void pre_process_loop()
   heap_caps_free(cropped_image);
 }
 
-void handle_detection(uint8_t *resized_img_copy)
+void send_to_ftp(uint8_t *resized_img_copy)
 {
-  gettimeofday(&current_time, NULL);
-
-  if ((unsigned long)current_time.tv_sec - last_detection_time > 6)
-  {
-    detection_counter = 0;
-  }
-  detection_counter++;
-
   uint8_t *jpeg;
   size_t len;
   fmt2jpg(resized_img_copy, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
@@ -272,40 +264,54 @@ void handle_detection(uint8_t *resized_img_copy)
   // snprintf(local_filename, sizeof(local_filename), "/sdcard/esp/%04d.jpg", filename_number);
   // timeit("Save to sd card", save_to_sdcard(jpeg, len, local_filename));
 
-  if (detection_counter == 3 && (unsigned long)current_time.tv_sec - last_event_time > 120)
+  last_event_time = (unsigned long)current_time.tv_sec;
+
+  char remote_filename[0x100];
+  snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", filename_number);
+
+  NetBuf_t *nData;
+  int connection_response = ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
+  if (!connection_response)
   {
-    last_event_time = (unsigned long)current_time.tv_sec;
+    ESP_LOGI(TAG, "Could not send file to FTP, reconnecting to FTP...");
 
-    char remote_filename[0x100];
-    snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", filename_number);
+    int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
+    ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
+    ftpClient->ftpClientChangeDir("/thesis-temp", ftpClientNetBuf);
+    ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
+  }
+  int write_len = ftpClient->ftpClientWrite(jpeg, len, nData);
+  ftpClient->ftpClientClose(nData);
 
-    NetBuf_t *nData;
-    int connection_response = ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
-    if (!connection_response)
-    {
-      ESP_LOGI(TAG, "Could not send file to FTP, reconnecting to FTP...");
+  if (write_len)
+  {
+    ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
+  }
+  else
+  {
+    ESP_LOGI(TAG, "COULD NOT WRITE DATA");
+  }
 
-      int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
-      ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-      ftpClient->ftpClientChangeDir("/thesis-office", ftpClientNetBuf);
-      ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
-    }
-    int write_len = ftpClient->ftpClientWrite(jpeg, len, nData);
-    ftpClient->ftpClientClose(nData);
+  heap_caps_free(jpeg);
+}
 
-    if (write_len)
-    {
-      ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
-    }
-    else
-    {
-      ESP_LOGI(TAG, "COULD NOT WRITE DATA");
-    }
+void handle_detection(uint8_t *resized_img_copy)
+{
+  gettimeofday(&current_time, NULL);
+
+  if ((unsigned long)current_time.tv_sec - last_detection_time > 10)
+  {
+    detection_counter = 0;
+  }
+  detection_counter++;
+
+  if (detection_counter == 2 && (unsigned long)current_time.tv_sec - last_event_time > 120)
+  {
+    send_to_ftp(resized_img_copy);
   }
 
   last_detection_time = (unsigned long)current_time.tv_sec;
   pref_putUInt("filename_number", ++filename_number);
-  heap_caps_free(jpeg);
 }
 
 void tf_main_loop()
