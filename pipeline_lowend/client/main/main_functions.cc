@@ -145,7 +145,9 @@ void crop_image(uint8_t *src, uint8_t *dst, uint16_t changes, uint32_t &cropped_
 
     if (x >= i_p1_x && x < i_p2_x && y >= i_p1_y && y < i_p2_y)
     {
-      dst[cropped_len] = src[i];
+      dst[cropped_len * 3] = src[i * 3];
+      dst[cropped_len * 3 + 1] = src[i * 3 + 1];
+      dst[cropped_len * 3 + 2] = src[i * 3 + 2];
       cropped_len++;
     }
   }
@@ -218,7 +220,7 @@ bool downscale(uint8_t *image)
     const uint8_t block_x = floor(x / BLOCK_SIZE);
     const uint8_t block_y = floor(y / BLOCK_SIZE);
     uint16_t j = block_x + block_y * W;
-    const uint8_t pixel = image[i];
+    const uint8_t pixel = image[i*3]; // i*3 for only red channel
 
     // average pixels in block (accumulate)
     current_frame[j] += pixel;

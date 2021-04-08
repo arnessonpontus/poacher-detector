@@ -134,7 +134,7 @@ void setup()
   int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
 
   ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-  ftpClient->ftpClientChangeDir("/thesis-office", ftpClientNetBuf);
+  ftpClient->ftpClientChangeDir("/thesis-temp", ftpClientNetBuf);
 
   pref_begin("poach_det", false);
   filename_number = pref_getUInt("filename_number", 0);
@@ -158,7 +158,7 @@ void setup()
     return;
   }
 
-  static tflite::MicroMutableOpResolver<5> micro_op_resolver;
+  static tflite::MicroMutableOpResolver<6> micro_op_resolver;
   micro_op_resolver.AddBuiltin(
       tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
       tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
@@ -170,6 +170,8 @@ void setup()
                                tflite::ops::micro::Register_RESHAPE());
   micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
                                tflite::ops::micro::Register_SOFTMAX());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_ADD,
+                               tflite::ops::micro::Register_ADD());
 
   // Build an interpreter to run the model with.
   static tflite::MicroInterpreter static_interpreter(
@@ -235,7 +237,7 @@ void pre_process_loop()
     uint8_t *jpeg;
     size_t len;
 
-    fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+    fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_RGB888, 100, &jpeg, &len);
 
     if (esp_websocket_client_is_connected(client))
     {
@@ -264,9 +266,9 @@ void handle_detection(uint8_t *resized_img_copy)
   }
   detection_counter++;
 
-  uint8_t *jpeg;
-  size_t len;
-  fmt2jpg(resized_img_copy, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+  // uint8_t *jpeg;
+  // size_t len;
+  // fmt2jpg(resized_img_copy, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
   // char local_filename[0x100];
   // snprintf(local_filename, sizeof(local_filename), "/sdcard/esp/%04d.jpg", filename_number);
@@ -276,36 +278,36 @@ void handle_detection(uint8_t *resized_img_copy)
   {
     last_event_time = (unsigned long)current_time.tv_sec;
 
-    char remote_filename[0x100];
-    snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", filename_number);
+    // char remote_filename[0x100];
+    // snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", filename_number);
 
-    NetBuf_t *nData;
-    int connection_response = ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
-    if (!connection_response)
-    {
-      ESP_LOGI(TAG, "Could not send file to FTP, reconnecting to FTP...");
+    // NetBuf_t *nData;
+    // int connection_response = ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
+    // if (!connection_response)
+    // {
+    //   ESP_LOGI(TAG, "Could not send file to FTP, reconnecting to FTP...");
 
-      int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
-      ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-      ftpClient->ftpClientChangeDir("/thesis-office", ftpClientNetBuf);
-      ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
-    }
-    int write_len = ftpClient->ftpClientWrite(jpeg, len, nData);
-    ftpClient->ftpClientClose(nData);
+    //   int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
+    //   ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
+    //   ftpClient->ftpClientChangeDir("/thesis-temp", ftpClientNetBuf);
+    //   ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
+    // }
+    // int write_len = ftpClient->ftpClientWrite(jpeg, len, nData);
+    // ftpClient->ftpClientClose(nData);
 
-    if (write_len)
-    {
-      ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
-    }
-    else
-    {
-      ESP_LOGI(TAG, "COULD NOT WRITE DATA");
-    }
+    // if (write_len)
+    // {
+    //   ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
+    // }
+    // else
+    // {
+    //   ESP_LOGI(TAG, "COULD NOT WRITE DATA");
+    // }
   }
 
   last_detection_time = (unsigned long)current_time.tv_sec;
   pref_putUInt("filename_number", ++filename_number);
-  heap_caps_free(jpeg);
+  // heap_caps_free(jpeg);
 }
 
 void tf_main_loop()

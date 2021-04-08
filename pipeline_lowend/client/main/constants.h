@@ -5,7 +5,7 @@
 #define MODEL_INPUT_H 96
 #define WIDTH 320
 #define HEIGHT 240
-#define NUM_CHANNELS 1
+#define NUM_CHANNELS 3
 #define BLOCK_SIZE 5
 #define BLOCKS ((WIDTH * HEIGHT) / (BLOCK_SIZE * BLOCK_SIZE))
 #define W (WIDTH / BLOCK_SIZE)
