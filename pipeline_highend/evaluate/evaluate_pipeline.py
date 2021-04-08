@@ -24,7 +24,9 @@ import glob
 detection_counter = 0
 last_detection_frame = 0
 last_event_frame = -999999
-frame_number = 0
+
+NUM_SEQUENCES = 21
+tp = 0
 
 def run_inference(image):
     input_tensor = tf.convert_to_tensor(image)
@@ -77,36 +79,55 @@ print('Done! Took {} seconds'.format(elapsed_time))
 category_index = label_map_util.create_category_index_from_labelmap(PATH_TO_LABELS,
                                                                 use_display_name=True)
 
-session = ftplib.FTP(config.FTP_HOST, config.FTP_USER, config.FTP_PASS)
-session.set_debuglevel(0)
+#session = ftplib.FTP(config.FTP_HOST, config.FTP_USER, config.FTP_PASS)
+#session.set_debuglevel(0)
 
-for image_path in sorted(glob.glob('../../utils/output_images_2/*.jpg')):
-    image_np = load_image_into_numpy_array(image_path)
+for i in range(NUM_SEQUENCES):
+    event_created = False
+    print("----- STARTING SEQUENCE " + str(i) + " -----")
+    
+    for j, image_path in enumerate(sorted(glob.glob('sequences/seq_{0:04}/color/*.jpg'.format(i)))):
+        if j % 5 != 0:
+            continue
 
-    image, max_score = run_inference(image_np)
-    img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    cv2.imshow('image', img)
-    cv2.waitKey(1)
+        image_np = load_image_into_numpy_array(image_path)
 
-    print("Max score: ", max_score)
+        image, max_score = run_inference(image_np)
+        img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        cv2.imshow('image', img)
+        cv2.waitKey(1)
 
-    if max_score > 0.5:
-        print("*********HUMAN DETECTED**********")
+        print("Max score: ", max_score)
 
-        if frame_number - last_detection_frame > 6:
-            detection_counter = 0
-        detection_counter += 1
- 
-        if detection_counter == 3 and frame_number - last_event_frame > 120:
-            img = Image.fromarray(image)
-            temp = BytesIO()
-            img.save(temp, format="JPEG")
-            temp.seek(0)
-            session.storbinary('STOR /thesis-highend/image_' + str(frame_number) + '.jpeg', temp)
+        if max_score > 0.5:
+            print("*********HUMAN DETECTED**********")
 
-            last_event_frame = frame_number
+            if j - last_detection_frame > 10:
+                detection_counter = 0
+            detection_counter += 1
+    
+            if detection_counter == 2 and j - last_event_frame > 120:
+                #img = Image.fromarray(image)
+                #temp = BytesIO()
+                #img.save(temp, format="JPEG")
+                #temp.seek(0)
+                #session.storbinary('STOR /thesis-highend/image_' + str(j) + '.jpeg', temp)
 
-            print("SENT TO FTP AS image_" + str(frame_number) + '.jpeg')
+                last_event_frame = j
 
-    last_detection_frame = frame_number
-    frame_number += 1
+                print("Event was created")
+                #print("SENT TO FTP AS image_" + str(j) + '.jpeg')
+
+                event_created = True
+
+        last_detection_frame = j
+
+    if event_created:
+        print("event_created = true")
+        tp += 1
+
+    last_event_frame = -9999999
+    last_detection_frame = 0
+    detection_counter = 0
+
+print("True Positives: ", tp)

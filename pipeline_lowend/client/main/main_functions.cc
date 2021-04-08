@@ -300,9 +300,9 @@ void save_to_sdcard(uint8_t *image, size_t len, char filename[])
   ESP_LOGI(TAG, "File written to %s", filename);
 }
 
-void get_stored_image(uint8_t* input_image, uint16_t image_number) {
+void get_stored_image(uint8_t* input_image, uint16_t sequence_number, uint16_t image_number) {
   char buf[0x100];
-  snprintf(buf, sizeof(buf), "/sdcard/esp/%04d.bin", image_number);
+  snprintf(buf, sizeof(buf), "/sdcard/esp/seq_%04d/%04d.bin", sequence_number, image_number);
   FILE *f = fopen(buf, "r");
   if (f == NULL)
   {
@@ -313,7 +313,6 @@ void get_stored_image(uint8_t* input_image, uint16_t image_number) {
   fread(input_image, WIDTH * HEIGHT, 1,  f);
   fflush(f);
   fclose(f);
-  ESP_LOGI(TAG, "File read");
 }
 
 void setup_mf() {

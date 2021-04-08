@@ -66,7 +66,7 @@ void update_frame();
 bool downscale(uint8_t *image);
 void setup_sdcard();
 void save_to_sdcard(uint8_t *image, size_t len, char filename[]);
-void get_stored_image(uint8_t* input_image, uint16_t image_number);
+void get_stored_image(uint8_t* input_image, uint16_t sequence_number, uint16_t image_number);
 void setup_mf();
 
 #ifdef __cplusplus

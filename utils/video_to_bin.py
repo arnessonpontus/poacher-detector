@@ -3,7 +3,7 @@ import cv2
 from PIL import Image
 import time
 
-gray = False
+gray = True
 
 def crop(image):
     image  = Image.fromarray(image)
@@ -31,7 +31,7 @@ def crop(image):
     cropped = image.crop(resize).resize((ideal_width, ideal_height), Image.ANTIALIAS)
     return cropped
 
-cap = cv2.VideoCapture('/Users/pontusarnesson/Documents/Skola/femman/exjobb/exjobb/trimmed_angelas_videos/vid1.mov')
+cap = cv2.VideoCapture('/Users/pontusarnesson/Documents/Skola/femman/exjobb/exjobb/trimmed_angelas_videos/vid20.mov')
 
 recorded_fps = 30
 frame_rate = 5
@@ -48,10 +48,12 @@ while(True):
 
         cropped_img = crop(new_frame)
 
-        cropped_img.save('output_images_2/{0:04}'.format(filename_counter) + ".jpg")
+        filename = 'output_images/gray/{0:04}'.format(filename_counter) if gray else 'output_images/color/{0:04}'.format(filename_counter)
+
+        cropped_img.save(filename + ".jpg")
 
         if gray:
-            f = open('output_images/{0:04}'.format(filename_counter) + ".bin", "wb")
+            f = open(filename + ".bin", "wb")
             f.write(cropped_img.tobytes())
 
         filename_counter+=1
@@ -65,4 +67,3 @@ while(True):
 # When everything done, release the capture
 cap.release()
 cv2.destroyAllWindows()
-

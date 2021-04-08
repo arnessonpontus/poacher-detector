@@ -35,8 +35,12 @@ limitations under the License.
 
 static const char *TAG = "EVAL_PIPELINE";
 
-uint16_t num_images = 66;
+size_t num_images[] = {66, 47, 54, 27, 32, 68, 36, 72, 48, 33, 36, 47, 53, 59, 68, 81, 54, 48, 128, 128, 121};
+size_t num_sequences = sizeof(num_images) / sizeof(num_images[0]);
 uint16_t image_number = 0;
+
+int tp = 0;
+bool event_created = false;
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace
@@ -181,19 +185,12 @@ void setup()
   input = interpreter->input(0);
 }
 
-void pre_process_loop()
+void pre_process_loop(size_t sequence_number)
 {
   uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
   uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
 
-  // Get image from provider.
-  // if (kTfLiteOk != GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
-  //                           input_image))
-  // {
-  //   TF_LITE_REPORT_ERROR(error_reporter, "Image capture failed.");
-  // }
-
-  get_stored_image(input_image, image_number);
+  get_stored_image(input_image, sequence_number, image_number);
 
   // Update downsampled current_frame
   downscale(input_image);
@@ -204,15 +201,25 @@ void pre_process_loop()
 
   bg_subtraction(changes, accumelated_x, accumelated_y);
 
+  uint8_t *jpeg;
+  size_t len;
+
+  fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
+
+  if (esp_websocket_client_is_connected(client))
+  {
+    esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
+  }
+
+  heap_caps_free(jpeg);
+
   run_tf = false;
-
   bool motion_detected = (1.0 * changes / BLOCKS) > IMAGE_DIFF_THRESHOLD;
-
   int cropped_height;
 
   if (motion_detected)
   {
-    ESP_LOGI(TAG, "Motion detected");
+    //ESP_LOGI(TAG, "Motion detected");
 
     // Allocate enough for maximum crop (Height x Height)
     uint32_t cropped_len = 0;
@@ -222,26 +229,12 @@ void pre_process_loop()
 
     image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, cropped_height, cropped_height);
     run_tf = true;
-
-    uint8_t *jpeg;
-    size_t len;
-
-    fmt2jpg(resized_img, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
-
-    if (esp_websocket_client_is_connected(client))
-    {
-      esp_websocket_client_send(client, (const char *)jpeg, len, portMAX_DELAY);
-    }
-
-    heap_caps_free(jpeg);
   }
 
   // Set prev_frame values to current_frame values
   update_frame();
 
   vTaskDelay(200 / portTICK_PERIOD_MS);
-
-  image_number++;
 
   heap_caps_free(input_image);
   heap_caps_free(cropped_image);
@@ -251,7 +244,7 @@ void handle_detection(uint8_t *resized_img_copy)
 {
   gettimeofday(&current_time, NULL);
 
-  if ((unsigned long)current_time.tv_sec - last_detection_time > 6)
+  if ((unsigned long)current_time.tv_sec - last_detection_time > 10)
   {
     detection_counter = 0;
   }
@@ -261,35 +254,39 @@ void handle_detection(uint8_t *resized_img_copy)
   size_t len;
   fmt2jpg(resized_img_copy, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MODEL_INPUT_W, MODEL_INPUT_H, PIXFORMAT_GRAYSCALE, 100, &jpeg, &len);
 
-  if (detection_counter == 3 && (unsigned long)current_time.tv_sec - last_event_time > 120)
+  if (detection_counter == 2 && (unsigned long)current_time.tv_sec - last_event_time > 120)
   {
     last_event_time = (unsigned long)current_time.tv_sec;
 
-    char remote_filename[0x100];
-    snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", image_number);
+    event_created = true;
 
-    NetBuf_t *nData;
-    int connection_response = ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
-    if (!connection_response)
-    {
-      ESP_LOGI(TAG, "Could not send file to FTP, reconnecting to FTP...");
+    ESP_LOGI(TAG, "Event created");
 
-      int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
-      ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-      ftpClient->ftpClientChangeDir("/thesis-lowend", ftpClientNetBuf);
-      ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
-    }
-    int write_len = ftpClient->ftpClientWrite(jpeg, len, nData);
-    ftpClient->ftpClientClose(nData);
+    // char remote_filename[0x100];
+    // snprintf(remote_filename, sizeof(remote_filename), "image%04d.jpg", image_number);
 
-    if (write_len)
-    {
-      ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
-    }
-    else
-    {
-      ESP_LOGI(TAG, "COULD NOT WRITE DATA");
-    }
+    // NetBuf_t *nData;
+    // int connection_response = ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
+    // if (!connection_response)
+    // {
+    //   ESP_LOGI(TAG, "Could not send file to FTP, reconnecting to FTP...");
+
+    //   int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
+    //   ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
+    //   ftpClient->ftpClientChangeDir("/thesis-lowend", ftpClientNetBuf);
+    //   ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
+    // }
+    // int write_len = ftpClient->ftpClientWrite(jpeg, len, nData);
+    // ftpClient->ftpClientClose(nData);
+
+    // if (write_len)
+    // {
+    //   ESP_LOGI(TAG, "SENT TO FTP AS: %s", remote_filename);
+    // }
+    // else
+    // {
+    //   ESP_LOGI(TAG, "COULD NOT WRITE DATA");
+    // }
   }
 
   last_detection_time = (unsigned long)current_time.tv_sec;
@@ -305,7 +302,7 @@ void tf_main_loop()
   }
 
   uint8_t *resized_img_copy = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
-  
+
   // Set tensorflow input
   for (int i = 0; i < MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS; i++)
   {
@@ -337,18 +334,34 @@ void tf_main_loop()
 
 int tf_main(int argc, char *argv[])
 {
-  while (true)
+  for (size_t i = 0; i < num_sequences; i++)
   {
-    if (image_number == num_images) {
-      ESP_LOGI(TAG, "FINISHED");
-      vTaskDelay(1000000 / portTICK_PERIOD_MS);
-      return 0;
+    ESP_LOGI(TAG, "---- STARTING SEQUENCE %d ----", i);
+
+    event_created = false;
+    for (size_t j = 0; j < num_images[i]; j++)
+    {
+      image_number = j;
+      timeit("pre process took: ", pre_process_loop(i));
+      if (image_number % 5 == 0)
+      {
+        timeit("tf took: ", tf_main_loop());
+      }
     }
-    timeit("pre process took: ", pre_process_loop());
-    if (image_number % 5 == 0) {
-      timeit("tf took: ", tf_main_loop());
-    }
+
+    if (event_created)
+      tp++;
+
+    last_detection_time = 0;
+    last_event_time = -999999;
+    detection_counter = 0;
   }
+
+  ESP_LOGI(TAG, "True Positives: %d", tp);
+
+  vTaskDelay(1000000 / portTICK_PERIOD_MS);
+
+  return 0;
 }
 
 extern "C" void app_main()
