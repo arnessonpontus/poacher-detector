@@ -7,7 +7,7 @@
 
 const char* ssid = "Pone Plus";
 const char* password = "Sutnop123";
-const char* websocket_server_host = "192.168.243.93";
+const char* websocket_server_host = "192.168.124.93";
 const uint16_t websocket_server_port = 8887;
 
 #define FRAME_SIZE FRAMESIZE_SVGA
@@ -20,6 +20,9 @@ const uint16_t websocket_server_port = 8887;
 #define BLOCK_DIFF_THRESHOLD 0.15
 #define IMAGE_DIFF_THRESHOLD 0.015
 #define DEBUG 0
+
+#define timeit(label, code) { uint32_t start = millis(); code; uint32_t duration = millis() - start; Serial.println("It took " +  (String)duration + " millis for " + label); }
+//#define timeit(label, code) code;
 
 uint16_t *prev_frame;
 uint16_t *current_frame;
@@ -91,15 +94,26 @@ void setup() {
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
     Serial.printf("Camera init failed with error 0x%x", err);
+    ESP.restart();
     return;
   }
 
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  uint8_t connection_attempts = 0;
+  while (WiFi.status() != WL_CONNECTED)
+  {
     delay(500);
     Serial.print(".");
+
+    if (connection_attempts > 2)
+    {
+      ESP.restart();
+    }
+
+    connection_attempts++;
   }
+  
   Serial.println("");
   Serial.println("WiFi connected");
 
@@ -123,23 +137,30 @@ void setup() {
 }
 
 void loop() {
-  camera_fb_t *frame_buffer = esp_camera_fb_get();
+  camera_fb_t *frame_buffer;
+  timeit("capture frame", frame_buffer = esp_camera_fb_get());
 
   if (!frame_buffer)
     return;
 
   uint8_t* rgb_img = (uint8_t*) heap_caps_malloc(WIDTH * HEIGHT * 3, MALLOC_CAP_SPIRAM);
-  
-  fmt2rgb888(frame_buffer->buf, frame_buffer->len, PIXFORMAT, rgb_img);
 
-  if (!downsample(rgb_img)) {
-    Serial.println("Failed capture");
+  timeit("jpg conversion", fmt2rgb888(frame_buffer->buf, frame_buffer->len, PIXFORMAT, rgb_img));
+
+  bool downsampling_success;
+  timeit("downsampling", downsampling_success = downsample(rgb_img));
+
+  if (!downsampling_success) {
+    Serial.println("Failed downsampling");
     delay(3000);
     
     return;
   }
+
+  bool motion_detected;
+  timeit("motion detect", motion_detected = motion_detect());
   
-  if (motion_detect()) {
+  if (motion_detected) {
     Serial.println("Motion detected");
 
     client.sendBinary((const char*) frame_buffer->buf, frame_buffer->len);
