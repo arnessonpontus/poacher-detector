@@ -34,14 +34,15 @@ limitations under the License.
 
 static const char *TAG = "EVAL";
 
-uint16_t num_images = 221;
+uint16_t num_images = 204;
 uint16_t image_number = 0;
 uint16_t offset_number = 0;
 uint16_t tp = 0;
 uint16_t tn = 0;
 uint16_t fp = 0;
 uint16_t fn = 0;
-uint8_t ground_truth[] = {1,1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1,1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1,1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1,1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1,1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1};
+uint8_t ground_truth[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+bool is_sequence = false;
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace
@@ -79,7 +80,7 @@ static void websocket_app_start(void)
 {
   esp_websocket_client_config_t websocket_cfg = {};
 
-  websocket_cfg.uri = CONFIG_WEBSOCKET_URI;
+  websocket_cfg.uri = CONFIG_ESP_WEBSOCKET_URI;
 
   ESP_LOGI(TAG, "Connecting to %s...", websocket_cfg.uri);
 
@@ -184,42 +185,48 @@ void loop()
 
   uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT, MALLOC_CAP_SPIRAM);
 
-  get_stored_image(input_image, image_number + offset_number);
-
-  // Update downsampled current_frame
-  downscale(input_image);
+  get_stored_image(input_image, 0, image_number + offset_number);
 
   uint8_t *resized_img = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
-  uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
 
-  uint16_t changes;
-  uint16_t accumelated_x;
-  uint16_t accumelated_y;
+  if (is_sequence) {
+    // Update downsampled current_frame
+    downscale(input_image);
+    uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
 
-  bg_subtraction(changes, accumelated_x, accumelated_y);
+    uint16_t changes;
+    uint16_t accumelated_x;
+    uint16_t accumelated_y;
 
-  bool motion_detected = (1.0 * changes / BLOCKS) > IMAGE_DIFF_THRESHOLD;
+    bg_subtraction(changes, accumelated_x, accumelated_y);
 
-  if (motion_detected)
-  {
-    ESP_LOGI(TAG, "Motion detected");
+    bool motion_detected = (1.0 * changes / BLOCKS) > IMAGE_DIFF_THRESHOLD;
 
-    // Allocate enough for maximum crop (Height x Height)
-    uint32_t cropped_len = 0;
-    crop_image(input_image, cropped_image, changes, cropped_len, accumelated_x, accumelated_y);
+    if (motion_detected)
+    {
+      ESP_LOGI(TAG, "Motion detected");
 
-    image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, sqrt(cropped_len), sqrt(cropped_len));
+      // Allocate enough for maximum crop (Height x Height)
+      uint32_t cropped_len = 0;
+      crop_image(input_image, cropped_image, changes, cropped_len, accumelated_x, accumelated_y);
+
+      image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, sqrt(cropped_len), sqrt(cropped_len));
+    }
+    else
+    {
+      //stbir_resize_uint8(input->data.uint8, WIDTH, HEIGHT, 0, resized_img, 96, 96, 0, 1);
+      crop_image_center(input_image, cropped_image);
+
+      image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, HEIGHT, HEIGHT);
+    }
+
+    heap_caps_free(cropped_image);
+
+    // Set prev_frame values to current_frame values
+    update_frame();
+  } else {
+    memcpy(resized_img, input_image, MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS);
   }
-  else
-  {
-    //stbir_resize_uint8(input->data.uint8, WIDTH, HEIGHT, 0, resized_img, 96, 96, 0, 1);
-    crop_image_center(input_image, cropped_image);
-
-    image_resize_linear(resized_img, cropped_image, MODEL_INPUT_W, MODEL_INPUT_H, NUM_CHANNELS, HEIGHT, HEIGHT);
-  }
-
-  // Set prev_frame values to current_frame values
-  update_frame();
 
   // Copy because invoke changes the input. Uses normal malloc since heap_caps_malloc gives NULL
   uint8_t *temp_input = (uint8_t *)heap_caps_malloc(MODEL_INPUT_W * MODEL_INPUT_H * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
@@ -271,7 +278,6 @@ void loop()
   heap_caps_free(temp_input);
   heap_caps_free(input_image);
   heap_caps_free(resized_img);
-  heap_caps_free(cropped_image);
 }
 
 int tf_main(int argc, char *argv[])
