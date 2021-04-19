@@ -105,5 +105,5 @@ if __name__ == '__main__':
     session.set_debuglevel(0)
 
     asyncio.get_event_loop().run_until_complete(
-        websockets.serve(hello, '192.168.243.93', 8887, ping_interval=None))
+        websockets.serve(hello, '192.168.124.93', 8887, ping_interval=None))
     asyncio.get_event_loop().run_forever()
