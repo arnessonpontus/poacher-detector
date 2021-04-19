@@ -86,8 +86,8 @@ async def hello(websocket, path):
                 await websocket.send("humandetected")
 
 if __name__ == '__main__':
-    PATH_TO_SAVED_MODEL = "../models/model/saved_model"
-    PATH_TO_LABELS = "../models/label_map.pbtxt"
+    PATH_TO_SAVED_MODEL = "../../models/H1/saved_model"
+    PATH_TO_LABELS = "../../models/label_map.pbtxt"
 
     print('Loading model...', end='')
     start_time = time.time()

@@ -7,7 +7,7 @@ build/
 /utils/output_images*/
 /pipeline_highend/*/evaluate/sequences
 /pipeline_highend/*/evaluate/eval_images
-/pipeline_highend/*/models
+/pipeline_highend/models
 secrets.h
 config.py
 pipeline_highend/models/model*

@@ -64,8 +64,8 @@ def run_inference(image):
 def load_image_into_numpy_array(path):
     return np.array(Image.open(path))
 
-PATH_TO_SAVED_MODEL = "../models/model/saved_model"
-PATH_TO_LABELS = "../models/label_map.pbtxt"
+PATH_TO_SAVED_MODEL = "../../models/H1/saved_model"
+PATH_TO_LABELS = "../../models/label_map.pbtxt"
 
 print('Loading model...', end='')
 start_time = time.time()

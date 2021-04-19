@@ -9,8 +9,8 @@ import glob
 import cv2
 warnings.filterwarnings('ignore')   # Suppress Matplotlib warnings
 
-PATH_TO_SAVED_MODEL = "../models/H2/saved_model"
-PATH_TO_LABELS = "../models/label_map.pbtxt"
+PATH_TO_SAVED_MODEL = "../../models/H2/saved_model"
+PATH_TO_LABELS = "../../models/label_map.pbtxt"
 
 tp = 0
 tn = 0
