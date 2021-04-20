@@ -9,8 +9,8 @@ import glob
 import cv2
 warnings.filterwarnings('ignore')   # Suppress Matplotlib warnings
 
-PATH_TO_SAVED_MODEL = "../../models/H2/saved_model"
-PATH_TO_LABELS = "../../models/label_map.pbtxt"
+PATH_TO_SAVED_MODEL = "../models/H3/saved_model"
+PATH_TO_LABELS = "../models/label_map.pbtxt"
 
 tp = 0
 tn = 0
@@ -39,7 +39,7 @@ def run_inference(image):
 
     detections = detect_fn(input_tensor)
 
-    person_indices = detections['detection_classes'] == 1
+    person_indices = detections['detection_classes'] == 4
 
     if np.any(person_indices): 
       max_score = np.max(detections['detection_scores'][person_indices])
@@ -72,7 +72,7 @@ def run_inference(image):
     return image, max_score
 
 if __name__ == '__main__':
-  for i, image_path in enumerate(sorted(glob.glob('/Users/pontusarnesson/Documents/Skola/femman/exjobb/exjobb/poacher-detector/dataset/test/*.jpg'))):
+  for i, image_path in enumerate(sorted(glob.glob('/Users/pontusarnesson/Documents/Skola/femman/exjobb/exjobb/poacher-detector/dataset/1_class/test/*.jpg'))):
     image_np = load_image_into_numpy_array(image_path)
 
     image, max_score = run_inference(image_np)
