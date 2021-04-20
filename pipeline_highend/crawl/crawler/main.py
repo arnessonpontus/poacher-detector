@@ -3,12 +3,16 @@ from ftplib import FTP
 import sys
 sys.path.append('/Users/pontusarnesson/Documents/Skola/femman/exjobb/exjobb/poacher-detector/pipeline_highend')
 import config
-from PIL import Image
+from PIL import Image, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 from io import BytesIO
 import tensorflow as tf
 import numpy as np
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as viz_utils
+from dateutil import parser
+from datetime import datetime
+import cv2
 
 detect_fn = None
 category_index = None
@@ -40,7 +44,7 @@ def run_inference(image):
 
     detections = detect_fn(input_tensor)
 
-    person_indices = detections['detection_classes'] == 1
+    person_indices = detections['detection_classes'] == 4
 
     if np.any(person_indices): 
       max_score = np.max(detections['detection_scores'][person_indices])
@@ -73,7 +77,7 @@ def run_inference(image):
     return image, max_score
 
 if __name__ == "__main__":
-    PATH_TO_SAVED_MODEL = "../../models/H1/saved_model"
+    PATH_TO_SAVED_MODEL = "../../models/H3/saved_model"
     PATH_TO_LABELS = "../../models/label_map.pbtxt"
 
     print('Loading model...', end='')
@@ -90,19 +94,45 @@ if __name__ == "__main__":
 
     connection = FTP(config.FTP_HOST, config.FTP_USER, config.FTP_PASS, timeout=60)
 
+    last_detection_time = datetime.min
+    detection_counter = 0
     while(True):
         connection = handle_FTP_connection(connection)
 
         filenames = connection.nlst(config.FTP_DIR)
 
-        for filename in filenames:
+        for filename in sorted(filenames):
+            short_filename = filename.split("/")[-1]
             img_data = BytesIO()
             connection.retrbinary("RETR " + filename, img_data.write)
             image = Image.open(img_data)
-            
-            image, max_score = run_inference(image)
-            Image.fromarray(image).show()
-            #image.show()
-            img_data.close()
 
-        time.sleep(3)
+            image, max_score = run_inference(image)
+
+            timestamp = connection.voidcmd("MDTM " + filename)[4:].strip()
+            upload_time = parser.parse(timestamp)
+            
+            if max_score > 0.5:
+                time_since_detetion = (upload_time - last_detection_time).total_seconds()
+                print("time since detection: ", time_since_detetion)
+                if time_since_detetion > 60:
+                    detection_counter = 0
+                detection_counter += 1
+                
+                if detection_counter == 2:
+                    print("****** Sending to FTP as: {} ******".format(short_filename))
+                    
+                    img = Image.fromarray(image)
+                    byte_img = BytesIO()
+                    img.save(byte_img, format="JPEG")
+                    byte_img.seek(0)
+                    connection.storbinary('STOR /thesis-highend/{}'.format(short_filename), byte_img)
+                last_detection_time = upload_time
+
+            img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            cv2.imshow('image', img)
+            cv2.waitKey(1)
+
+            connection.rename(filename, '/thesis-highend-processed/{}'.format(short_filename))
+
+        time.sleep(10)
