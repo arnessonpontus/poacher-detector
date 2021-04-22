@@ -134,7 +134,7 @@ void setup()
   int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
 
   ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-  ftpClient->ftpClientChangeDir("/thesis-office", ftpClientNetBuf);
+  ftpClient->ftpClientChangeDir(FTP_DIR, ftpClientNetBuf);
 
   pref_begin("poach_det", false);
   filename_number = pref_getUInt("filename_number", 0);
@@ -277,7 +277,7 @@ void send_to_ftp(uint8_t *resized_img_copy)
 
     int ftp_err = ftpClient->ftpClientConnect(FTP_HOST, 21, &ftpClientNetBuf);
     ftpClient->ftpClientLogin(FTP_USER, FTP_PASSWORD, ftpClientNetBuf);
-    ftpClient->ftpClientChangeDir("/thesis-temp", ftpClientNetBuf);
+    ftpClient->ftpClientChangeDir(FTP_DIR, ftpClientNetBuf);
     ftpClient->ftpClientAccess(remote_filename, FTP_CLIENT_FILE_WRITE, FTP_CLIENT_BINARY, ftpClientNetBuf, &nData);
   }
   int write_len = ftpClient->ftpClientWrite(jpeg, len, nData);
