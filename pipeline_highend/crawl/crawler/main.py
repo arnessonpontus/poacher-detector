@@ -17,6 +17,8 @@ import cv2
 detect_fn = None
 category_index = None
 
+use_90_class = True
+
 def handle_FTP_connection(connection):
     try:
         connection.voidcmd("NOOP")
@@ -44,7 +46,7 @@ def run_inference(image):
 
     detections = detect_fn(input_tensor)
 
-    person_indices = detections['detection_classes'] == 4
+    person_indices = detections['detection_classes'] == 1 if use_90_class else 4
 
     if np.any(person_indices): 
       max_score = np.max(detections['detection_scores'][person_indices])
@@ -77,8 +79,8 @@ def run_inference(image):
     return image, max_score
 
 if __name__ == "__main__":
-    PATH_TO_SAVED_MODEL = "../../models/H3/saved_model"
-    PATH_TO_LABELS = "../../models/label_map.pbtxt"
+    PATH_TO_SAVED_MODEL = "../../models/model_resnet_pretrained/saved_model"
+    PATH_TO_LABELS = "../../models/label_map_90_class.pbtxt" if use_90_class else "../../models/label_map_8_class.pbtxt"
 
     print('Loading model...', end='')
     start_time = time.time()
@@ -103,6 +105,7 @@ if __name__ == "__main__":
 
         for filename in sorted(filenames):
             short_filename = filename.split("/")[-1]
+            print("processing image ", short_filename)
             img_data = BytesIO()
             connection.retrbinary("RETR " + filename, img_data.write)
             image = Image.open(img_data)
