@@ -33,6 +33,9 @@ limitations under the License.
 #include "../constants.h"
 #include "../secrets.h"
 #include "../FtpClient.h"
+#include "time.h"
+#include "driver/adc.h"
+#include "esp_sleep.h"
 
 static const char *TAG = "MAIN";
 
@@ -81,6 +84,29 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
   }
 }
 
+const struct tm WAKE_UP_TIME = {0, 0, WAKE_UP_TIME_};
+const struct tm SLEEP_TIME = {0, 0, SLEEP_TIME_};
+struct tm currentTime;
+
+uint8_t calculateSleepTime() {
+  uint8_t move_sleep_24 = WAKE_UP_TIME.tm_hour > currentTime.tm_hour ? 24 : 0;
+  uint8_t sleep_time = 24 - (currentTime.tm_hour + move_sleep_24 - WAKE_UP_TIME.tm_hour);
+
+#ifdef DEBUG_MODE_
+  Serial.print("Going to sleep for ");
+  Serial.print(sleep_time);
+  Serial.println(" hours. Good night");
+#endif
+  return sleep_time;
+}
+
+void goToSleep(uint8_t deep_sleep_time) {
+  adc_power_off();
+  //esp_wifi_stop();
+  esp_sleep_enable_timer_wakeup(deep_sleep_time * uS_TO_HOUR_);
+  esp_deep_sleep_start();
+}
+
 static void websocket_app_start(void)
 {
   esp_websocket_client_config_t websocket_cfg = {};
@@ -106,6 +132,8 @@ void setup()
   esp_log_level_set("TRANSPORT_WS", ESP_LOG_DEBUG);
   esp_log_level_set("TRANS_TCP", ESP_LOG_DEBUG);
 
+  adc_power_on();
+
   esp_err_t ret;
   ret = nvs_flash_init();
   ESP_ERROR_CHECK(esp_netif_init());
@@ -125,6 +153,8 @@ void setup()
       vTaskDelay(1);
     }
   }
+
+  configTime(GMT_OFFSET_SEC_, DAYLIGHT_OFFSET_SEC_, NTP_);
 
   setup_mf();
 
@@ -190,6 +220,23 @@ void setup()
 
 void pre_process_loop()
 {
+  /// MS_PER_HOUR
+  if (getLocalTime(&currentTime)) {
+    if (WAKE_UP_TIME.tm_hour > SLEEP_TIME.tm_hour) {
+      if (currentTime.tm_hour >= SLEEP_TIME.tm_hour
+          && currentTime.tm_hour < WAKE_UP_TIME.tm_hour) {
+        //wifi_disconnect();
+        goToSleep(calculateSleepTime());
+      }
+    } else {
+      if (currentTime.tm_hour >= SLEEP_TIME.tm_hour
+          || currentTime.tm_hour < WAKE_UP_TIME.tm_hour) {
+        //wifi_disconnect();
+        goToSleep(calculateSleepTime());
+      }
+    }
+  }
+
   uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
   uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
 
