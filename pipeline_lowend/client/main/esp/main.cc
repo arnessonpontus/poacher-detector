@@ -33,6 +33,7 @@ limitations under the License.
 #include "../constants.h"
 #include "../secrets.h"
 #include "../FtpClient.h"
+#include "../esp_sleep_handler.h"
 
 static const char *TAG = "MAIN";
 
@@ -126,6 +127,8 @@ void setup()
     }
   }
 
+  sleep_handler_setup();
+
   setup_mf();
 
   // websocket_app_start();
@@ -190,6 +193,8 @@ void setup()
 
 void pre_process_loop()
 {
+  sleep_handler_update();
+
   uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
   uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
 

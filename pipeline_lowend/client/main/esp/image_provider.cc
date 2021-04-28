@@ -38,6 +38,8 @@ TfLiteStatus InitCamera(tflite::ErrorReporter *error_reporter)
   if (ret != 0)
   {
     TF_LITE_REPORT_ERROR(error_reporter, "Camera init failed\n");
+    ESP_LOGI(TAG, "Restarting esp...");
+    esp_restart();
     return kTfLiteError;
   }
   TF_LITE_REPORT_ERROR(error_reporter, "Camera Initialized\n");

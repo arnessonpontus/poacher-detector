@@ -17,4 +17,7 @@
 
 #define PERSON_THRESH 180
 
+#define SLEEP_DURATION_SECONDS 15
+#define SLEEP_HOUR 19
+
 #endif // CONSTANTS_H
