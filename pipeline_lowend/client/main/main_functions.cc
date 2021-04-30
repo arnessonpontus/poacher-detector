@@ -145,9 +145,10 @@ void crop_image(uint8_t *src, uint8_t *dst, uint16_t changes, uint32_t &cropped_
 
     if (x >= i_p1_x && x < i_p2_x && y >= i_p1_y && y < i_p2_y)
     {
-      dst[cropped_len * 3] = src[i * 3];
+      // Change to BGR
+      dst[cropped_len * 3 + 2] = src[i * 3];
       dst[cropped_len * 3 + 1] = src[i * 3 + 1];
-      dst[cropped_len * 3 + 2] = src[i * 3 + 2];
+      dst[cropped_len * 3] = src[i * 3 + 2];
       cropped_len++;
     }
   }
