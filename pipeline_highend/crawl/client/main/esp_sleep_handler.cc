@@ -24,6 +24,7 @@ static void initialize_sntp(void)
 
 void go_to_sleep(const int deep_sleep_sec)
 {
+
   esp_wifi_stop();
   ESP_LOGI(TAG, "Entering deep sleep for %d seconds", deep_sleep_sec);
   esp_deep_sleep(1000000LL * deep_sleep_sec);

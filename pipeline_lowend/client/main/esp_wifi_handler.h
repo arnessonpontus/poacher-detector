@@ -12,6 +12,7 @@
 #include "constants.h"
 #include "secrets.h"
 
+bool get_wifi_connected();
 static void event_handler(void* arg, esp_event_base_t event_base,
 								int32_t event_id, void* event_data);
 

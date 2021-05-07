@@ -120,11 +120,8 @@ void setup()
   ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
   if (wifi_init_sta() != ESP_OK)
   {
-    ESP_LOGE(TAG, "Connection failed");
-    while (1)
-    {
-      vTaskDelay(1);
-    }
+    ESP_LOGE(TAG, "Connection failed, restarting ESP...");
+    esp_restart();
   }
 
   sleep_handler_setup();
@@ -194,6 +191,11 @@ void setup()
 void pre_process_loop()
 {
   sleep_handler_update();
+
+  if (!get_wifi_connected()) {
+    ESP_LOGI(TAG, "Wifi disconnected, restarting ESP...");
+    esp_restart();
+  }
 
   uint8_t *input_image = (uint8_t *)heap_caps_malloc(WIDTH * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);
   uint8_t *cropped_image = (uint8_t *)heap_caps_malloc(HEIGHT * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);

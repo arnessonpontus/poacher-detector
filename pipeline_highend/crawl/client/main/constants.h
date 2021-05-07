@@ -13,4 +13,7 @@
 #define DECREMENT_START 2
 #define CROP_FACTOR 2.0
 
+#define SLEEP_DURATION_SECONDS 43200 // 12 hours
+#define SLEEP_HOUR 19 // Time in Kenya
+
 #endif // CONSTANTS_H

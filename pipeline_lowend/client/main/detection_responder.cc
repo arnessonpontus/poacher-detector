@@ -34,7 +34,6 @@ bool RespondToDetection(tflite::ErrorReporter *error_reporter,
 
   if (person_score > no_person_score && person_score > PERSON_THRESH)
   {
-    gpio_reset_pin((gpio_num_t)4);
     gpio_set_direction((gpio_num_t)4, GPIO_MODE_OUTPUT);
     gpio_set_level((gpio_num_t)4, 1);
     //vTaskDelay(1000 / portTICK_PERIOD_MS);

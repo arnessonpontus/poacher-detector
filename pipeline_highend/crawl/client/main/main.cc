@@ -17,6 +17,7 @@
 #include "esp_wifi_handler.h"
 #include "esp_log.h"
 #include "main_functions.h"
+#include "esp_sleep_handler.h"
 
 #define CAMERA_PIXEL_FORMAT PIXFORMAT_JPEG
 #define CAMERA_FRAME_SIZE FRAMESIZE_SVGA
@@ -93,11 +94,8 @@ void setup() {
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     if (wifi_init_sta() != ESP_OK)
     {
-        ESP_LOGE(TAG, "Connection failed");
-        while (1)
-        {
-        vTaskDelay(1);
-        }
+        ESP_LOGE(TAG, "Connection failed, restarting ESP...");
+        esp_restart();
     }
 
     camera_config_t config;
@@ -132,6 +130,8 @@ void setup() {
         return;
     }
 
+    sleep_handler_setup();
+
     setup_mf();
 
     ftpClient = getFtpClient();
@@ -152,6 +152,13 @@ void loop() {
     {
         ESP_LOGE(TAG, "Camera capture failed");
         return;
+    }
+
+    sleep_handler_update();
+
+    if (!get_wifi_connected()) {
+        ESP_LOGI(TAG, "Wifi disconnected, restarting ESP...");
+        esp_restart();
     }
 
     uint8_t* rgb_img = (uint8_t*) heap_caps_malloc(WIDTH * HEIGHT * NUM_CHANNELS, MALLOC_CAP_SPIRAM);

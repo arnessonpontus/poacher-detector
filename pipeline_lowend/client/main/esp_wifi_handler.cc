@@ -8,6 +8,12 @@ static const char *TAG = "ESP_WIFI";
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
 
+bool wifi_connected = false;
+
+bool get_wifi_connected() {
+	return wifi_connected;
+}
+
 static void event_handler(void *arg, esp_event_base_t event_base,
 						  int32_t event_id, void *event_data)
 {
@@ -17,8 +23,8 @@ static void event_handler(void *arg, esp_event_base_t event_base,
 	}
 	else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
 	{
-		ESP_LOGI(TAG, "Disconnected from wifi, restarting ESP...");
-		esp_restart();
+		ESP_LOGI(TAG, "Disconnected from wifi...");
+		wifi_connected = false;
 	}
 	else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
 	{
@@ -26,6 +32,7 @@ static void event_handler(void *arg, esp_event_base_t event_base,
 		ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
 		// s_retry_num = 0;
 		xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+		wifi_connected = true;
 	}
 }
 
@@ -60,7 +67,7 @@ esp_err_t wifi_init_sta()
 										   WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
 										   pdFALSE, // xClearOnExit
 										   pdFALSE, // xWaitForAllBits
-										   portMAX_DELAY);
+										   4000 / portTICK_PERIOD_MS);
 
 	/* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
 	 * happened. */
