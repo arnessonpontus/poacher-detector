@@ -26,13 +26,9 @@ limitations under the License.
 #include <sys/stat.h>
 #include "esp_err.h"
 #include "esp_vfs_fat.h"
-#include "driver/sdspi_host.h"
-#include "driver/spi_common.h"
-#include "sdmmc_cmd.h"
 #include "sdkconfig.h"
 #include "preferences.h"
 #include <errno.h>
-#include "driver/sdmmc_host.h"
 
 #define timeit(label, code)                                                                                            \
 {                                                                                                                      \
@@ -64,9 +60,6 @@ void crop_image(uint8_t *src, uint8_t *dst, uint16_t changes, uint32_t &cropped_
 void bg_subtraction(uint16_t &changes, uint16_t &accumelated_x, uint16_t &accumelated_y);
 void update_frame();
 bool downscale(uint8_t *image);
-void setup_sdcard();
-void save_to_sdcard(uint8_t *image, size_t len, char filename[]);
-void get_stored_image(uint8_t* input_image, uint16_t sequence_number, uint16_t image_number);
 void setup_mf();
 
 #ifdef __cplusplus

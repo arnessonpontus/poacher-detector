@@ -15,13 +15,6 @@ limitations under the License.
 #include "main_functions.h"
 #include "constants.h"
 
-#define MOUNT_POINT "/sdcard"
-
-// DMA channel to be used by the SPI peripheral
-#ifndef SPI_DMA_CHAN
-#define SPI_DMA_CHAN 1
-#endif //SPI_DMA_CHAN
-
 #define MAXIMUM(x, y) (((x) > (y)) ? (x) : (y))
 #define MINIMUM(x, y) (((x) < (y)) ? (x) : (y))
 
@@ -235,86 +228,6 @@ bool downscale(uint8_t *image)
   return true;
 }
 
-void setup_sdcard()
-{
-  esp_err_t ret;
-  esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-      .format_if_mount_failed = false,
-      .max_files = 5,
-      .allocation_unit_size = 16 * 1024};
-  sdmmc_card_t *card;
-  const char mount_point[] = MOUNT_POINT;
-  ESP_LOGI(TAG, "Initializing SD card");
-
-  ESP_LOGI(TAG, "Using SDMMC peripheral");
-  sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-
-  // This initializes the slot without card detect (CD) and write protect (WP) signals.
-  // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-  sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-
-  // To use 1-line SD mode, uncomment the following line:
-  slot_config.width = 1;
-
-  gpio_set_pull_mode((gpio_num_t)15, GPIO_PULLUP_ONLY); // CMD, needed in 4- and 1- line modes
-  gpio_set_pull_mode((gpio_num_t)2, GPIO_PULLUP_ONLY);  // D0, needed in 4- and 1-line modes
-  //gpio_set_pull_mode((gpio_num_t)4, GPIO_PULLUP_ONLY);  // D1, needed in 4-line mode only
-  //gpio_set_pull_mode((gpio_num_t)12, GPIO_PULLUP_ONLY); // D2, needed in 4-line mode only
-  gpio_set_pull_mode((gpio_num_t)13, GPIO_PULLUP_ONLY); // D3, needed in 4- and 1-line modes
-
-  ret = esp_vfs_fat_sdmmc_mount(mount_point, &host, &slot_config, &mount_config, &card);
-
-  if (ret != ESP_OK)
-  {
-    if (ret == ESP_FAIL)
-    {
-      ESP_LOGE(TAG, "Failed to mount filesystem. "
-                    "If you want the card to be formatted, set the EXAMPLE_FORMAT_IF_MOUNT_FAILED menuconfig option.");
-    }
-    else
-    {
-      ESP_LOGE(TAG, "Failed to initialize the card (%s). "
-                    "Make sure SD card lines have pull-up resistors in place.",
-               esp_err_to_name(ret));
-    }
-    return;
-  }
-
-  // Card has been initialized, print its properties
-  sdmmc_card_print_info(stdout, card);
-}
-
-void save_to_sdcard(uint8_t *image, size_t len, char filename[])
-{
-  ESP_LOGI(TAG, "Opening file");
-
-  FILE *f = fopen(filename, "w");
-  if (f == NULL)
-  {
-    ESP_LOGE(TAG, "Failed to open file for writing");
-    return;
-  }
-  fwrite(image, 1, len, f);
-  fflush(f);
-  fclose(f);
-  ESP_LOGI(TAG, "File written to %s", filename);
-}
-
-void get_stored_image(uint8_t* input_image, uint16_t sequence_number, uint16_t image_number) {
-  char buf[0x100];
-  snprintf(buf, sizeof(buf), "/sdcard/esp/seq_%04d/%04d.bin", sequence_number, image_number);
-  FILE *f = fopen(buf, "r");
-  if (f == NULL)
-  {
-    ESP_LOGE(TAG, "Failed to open file for reading %d", errno);
-    return;
-  }
-
-  fread(input_image, WIDTH * HEIGHT, 1,  f);
-  fflush(f);
-  fclose(f);
-}
-
 void setup_mf() {
   ESP_ERROR_CHECK(nvs_flash_init());
 
@@ -328,6 +241,4 @@ void setup_mf() {
     current_frame[i] = 0;
     bg_image[i] = 0;
   }
-
-  setup_sdcard();
 }
